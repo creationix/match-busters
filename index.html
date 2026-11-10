@@ -2,8 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Match Busters</title>
+<meta name="description" content="A classic match-3 puzzle game.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#12092b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Match Busters">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <style>
   :root { --bg1:#231942; --bg2:#12092b; --panel:#2f2157; --panel2:#3c2c6e; --text:#f4efff; --muted:#b9add9; --accent:#ffd84a; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -11,14 +20,17 @@
   body {
     background: radial-gradient(circle at 50% 0%, var(--bg1), var(--bg2) 75%);
     color: var(--text); font-family: system-ui, "Segoe UI", Roboto, sans-serif;
-    overflow: hidden; user-select: none; touch-action: none;
+    overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none;
+    position: fixed; inset: 0; overscroll-behavior: none;
+    --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
   }
-  #game { height: 100%; display: flex; flex-direction: column; align-items: center; padding: 10px; gap: 10px; }
+  #game { height: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;
+    padding: calc(10px + var(--sat)) calc(10px + var(--sar)) calc(10px + var(--sab)) calc(10px + var(--sal)); }
   #hud { width: 100%; max-width: 560px; }
   #hudTop { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   #hudTop .title { flex: 1; min-width: 0; }
   #lvName { font-weight: 800; font-size: 17px; }
-  #lvGoal { color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #lvGoal { color: var(--muted); font-size: 13px; line-height: 1.25; }
   .iconBtn { width: 42px; height: 42px; border-radius: 12px; border: 0; background: var(--panel2); color: var(--text); font-size: 18px; cursor: pointer; }
   .iconBtn:hover { filter: brightness(1.2); }
   #stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
@@ -30,7 +42,14 @@
   @keyframes bump { 40% { transform: scale(1.25); color: var(--accent); } }
   #bar { height: 8px; border-radius: 4px; background: var(--panel); margin-top: 8px; overflow: hidden; }
   #barFill { height: 100%; width: 0; background: linear-gradient(90deg, #ffb347, var(--accent)); border-radius: 4px; transition: width .25s; box-shadow: 0 0 12px var(--accent); }
-  #boardWrap { flex: 1; display: flex; align-items: flex-start; justify-content: center; width: 100%; min-height: 0; }
+  #boardWrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; }  /* phones held sideways: HUD moves beside the board so the board keeps the full height */
+  @media (orientation: landscape) and (max-height: 540px) {
+    #game { flex-direction: row; align-items: center; justify-content: center; gap: 14px; }
+    #hud { width: 220px; flex: none; }
+    #stats { grid-template-columns: 1fr; gap: 6px; }
+    .stat { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; }
+    #boardWrap { flex: 0 1 auto; width: auto; height: 100%; aspect-ratio: 1; max-width: calc(100% - 234px); }
+  }
   #stage { position: relative; line-height: 0; }
   #board { display: block; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.5), 0 0 0 2px rgba(255,255,255,.07), 0 0 60px rgba(120,80,255,.25); cursor: pointer; touch-action: none; }
   #floats { position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: 16px; line-height: 1; }
@@ -42,7 +61,8 @@
   #toast.show { animation: toast .9s ease-out; }
   @keyframes toast { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.4) rotate(-6deg); } 20% { opacity: 1; transform: translate(-50%,-50%) scale(1.2) rotate(2deg); } 70% { opacity: 1; transform: translate(-50%,-60%) scale(1); } 100% { opacity: 0; transform: translate(-50%,-90%) scale(1); } }
 
-  .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; padding: 16px; z-index: 10;
+  .screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; z-index: 10; overflow-y: auto;
+    padding: calc(16px + var(--sat)) calc(16px + var(--sar)) calc(16px + var(--sab)) calc(16px + var(--sal));
     background: radial-gradient(circle at 50% 0%, var(--bg1), var(--bg2) 75%); }
   .screen.dim { background: rgba(10,4,26,.78); backdrop-filter: blur(3px); }
   .screen.show { display: flex; }
@@ -249,6 +269,9 @@ function musicTick() {
 }
 window.addEventListener('pointerdown', initAudio, true);
 window.addEventListener('keydown', initAudio, true);
+window.addEventListener('touchend', initAudio, true); // iOS only unlocks audio on touchend/click
+window.addEventListener('click', initAudio, true);
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(() => {});
 document.addEventListener('click', e => { if (e.target.closest('button')) sfx.click(); });
 
 // ---------- flat icons (menu logo, HUD) ----------
@@ -636,7 +659,7 @@ scene.background = new THREE.Color('#140a2e');
 scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
 const CAM_D = 4.2 / Math.tan(THREE.MathUtils.degToRad(17.5));
-const sun = new THREE.DirectionalLight(0xffffff, 1.4); sun.position.set(-3, 5, 8); scene.add(sun);
+const sun = new THREE.DirectionalLight(0xffffff, 1.2); sun.position.set(-3, 5, 8); scene.add(sun);
 scene.add(new THREE.AmbientLight(0x9988dd, 0.6));
 const rt = new THREE.WebGLRenderTarget(512, 512, { type: THREE.HalfFloatType, samples: 4 });
 const composer = new EffectComposer(renderer, rt);
@@ -708,7 +731,7 @@ const pieceGroup = new THREE.Group(), fxGroup = new THREE.Group(); scene.add(pie
 let liveMeshes = new Set(), liveFx = new Set();
 function buildMesh(p) {
   const g = new THREE.Group(), color = new THREE.Color(SHAPES[p.t].color);
-  const mat = new THREE.MeshStandardMaterial({ color, metalness: 0.3, roughness: 0.2, emissive: color, emissiveIntensity: 0.16, envMapIntensity: 0.9, flatShading: p.t === 4 });
+  const mat = new THREE.MeshStandardMaterial({ color, metalness: 0.3, roughness: p.t === 0 || p.t === 2 ? 0.28 : 0.5, emissive: color, emissiveIntensity: 0.16, envMapIntensity: 0.55, flatShading: p.t === 4 });
   const main = new THREE.Mesh(GEOS[p.t], mat); g.add(main);
   const extra = new THREE.Group(); g.add(extra);
   if (p.sp === 'line') {
