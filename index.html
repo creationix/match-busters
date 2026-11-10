@@ -17,7 +17,7 @@
   :root { --bg1:#231942; --bg2:#12092b; --panel:#2f2157; --panel2:#3c2c6e; --text:#f4efff; --muted:#b9add9; --accent:#ffd84a; }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   /* The page colour is on <html> too, so any strip the layout doesn't reach is never white. */
-  html { height: 100%; margin: 0; background: #12092b; }
+  html { height: 100%; min-height: calc(100% + env(safe-area-inset-top, 0px)); margin: 0; background: #12092b; overflow: hidden; }
   body { margin: 0; }
   body {
     background: radial-gradient(circle at 50% 0%, var(--bg1), var(--bg2) 75%);
@@ -96,6 +96,7 @@
   .toggle.on::after { left: 29px; }
   #stars { font-size: 46px; letter-spacing: 6px; color: #5a4a8a; }
   #stars .on { color: var(--accent); text-shadow: 0 0 16px rgba(255,216,74,.7); }
+  #ver { position: absolute; left: 0; right: 0; bottom: calc(6px + var(--sab)); text-align: center; font-size: 11px; color: var(--muted); opacity: .6; pointer-events: none; }
   .link { background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font-size: 13px; }
   #loadErr { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 99; background: #9c1c1c; color: #fff; padding: 12px; text-align: center; }
 </style>
@@ -124,7 +125,7 @@
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
 </div>
 
-<div class="screen show" id="scrMenu"><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-10 c</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Match Busters</h1>
   <p class="sub">Swap. Match three. Bust them all.</p>
