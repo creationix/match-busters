@@ -24,6 +24,10 @@ There is no build step. Serve the folder with any static web server and open it.
 
 On HTTPS (or localhost), the service worker caches the game and all rendering modules on the first visit. Once installation finishes, it can be reopened offline.
 
+## Graphics
+
+Smooth graphics is enabled by default on touch devices. It renders at one pixel per CSS pixel, uses simpler lighting and models, skips bloom and offscreen multisampling, and reduces particles. Turn it off in Settings to restore the full effects and Retina resolution. The choice is saved with your progress. Rendering stops while paused or hidden.
+
 ## Vendored Three.js
 
 `vendor/three-0.160.0/` contains files from the official [`three@0.160.0` npm package](https://registry.npmjs.org/three/-/three-0.160.0.tgz): `build/three.module.js`, the six helpers imported by `index.html`, and their transitive imports. The upstream MIT license is included in that directory. The only changes to upstream files replace bare `from 'three'` imports with relative paths to `build/three.module.js`.
@@ -40,4 +44,4 @@ npx playwright install chromium
 npm test
 ```
 
-The tests check local module resolution and offline asset coverage, then exercise startup, a legal swap, offline reload, and migration from the previous service worker under a GitHub Pages-style subpath. To run against WebKit, install it with `npx playwright install webkit` and run `TEST_BROWSER=webkit npm test`. To use an existing Chromium installation, set `CHROMIUM_PATH` to its executable.
+The tests check local module resolution and offline asset coverage, then exercise startup, a legal swap, offline reload, and migration from the previous service worker under a GitHub Pages-style subpath. They also compare rendering cost between graphics modes, check that pausing stops rendering, and verify that graphics preferences preserve progress. To run against WebKit, install it with `npx playwright install webkit` and run `TEST_BROWSER=webkit npm test`. To use an existing Chromium installation, set `CHROMIUM_PATH` to its executable.

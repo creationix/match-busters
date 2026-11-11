@@ -119,7 +119,7 @@
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
 </div>
 
-<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 a</div><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 b</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Match Busters</h1>
   <p class="sub">Swap. Match three. Bust them all.</p>
@@ -137,6 +137,7 @@
   <h2>Settings</h2>
   <div class="row">Sound effects <button class="toggle" id="tSound"></button></div>
   <div class="row">Music <button class="toggle" id="tMusic"></button></div>
+  <div class="row">Smooth graphics <button class="toggle" id="tSmooth" role="switch" aria-label="Smooth graphics" aria-checked="false"></button></div>
   <button class="big alt" data-go="menu">Back</button>
   <button class="link" id="resetBtn">Reset progress</button>
 </div></div>
@@ -194,7 +195,8 @@ const $ = id => document.getElementById(id);
 const fmt = n => n.toLocaleString('en-US');
 
 // ---------- persistence ----------
-let save = { stars: [], sound: true, music: true };
+// Touch devices start with a lighter renderer; the setting can be changed on any device.
+let save = { stars: [], sound: true, music: true, smooth: window.matchMedia('(pointer: coarse)').matches };
 try { Object.assign(save, JSON.parse(localStorage.getItem('matchbusters') || '{}')); } catch (e) {}
 function persist() { try { localStorage.setItem('matchbusters', JSON.stringify(save)); } catch (e) {} }
 
@@ -399,7 +401,8 @@ function pickSpawn(g, swapped) {
 }
 function burst(wx, wy, color, n, speed) {
   const col = new THREE.Color(color);
-  for (let i = 0; i < n && G.parts.length < PMAX; i++) {
+  const count = save.smooth ? Math.ceil(n / 3) : n, limit = save.smooth ? 250 : PMAX;
+  for (let i = 0; i < count && G.parts.length < limit; i++) {
     const a = Math.random() * TAU, v = speed * (0.4 + Math.random());
     G.parts.push({ x: wx, y: wy, z: 0.3, vx: Math.cos(a) * v, vy: Math.sin(a) * v + 1, vz: (Math.random() - 0.3) * 3, life: 1, r: col.r, g: col.g, b: col.b });
   }
@@ -643,30 +646,28 @@ $('retryBtn').onclick = () => startLevel(G.level);
 $('resMenuBtn').onclick = () => { quit(); show('levels'); };
 function syncToggles() {
   $('tSound').classList.toggle('on', save.sound); $('tMusic').classList.toggle('on', save.music);
+  $('tSmooth').classList.toggle('on', save.smooth);
+  $('tSmooth').setAttribute('aria-checked', String(save.smooth));
   if (musicGain) musicGain.gain.value = save.music ? 1 : 0;
 }
 $('tSound').onclick = () => { save.sound = !save.sound; persist(); syncToggles(); sfx.pop(1); };
 $('tMusic').onclick = () => { save.music = !save.music; persist(); syncToggles(); };
+$('tSmooth').onclick = () => { save.smooth = !save.smooth; persist(); syncToggles(); applyGraphics(); };
 $('resetBtn').onclick = () => { if (confirm('Erase all level progress?')) { save.stars = []; persist(); } };
 window.addEventListener('keydown', e => { if (e.key === 'Escape' || e.key === 'p') setPaused(!G.paused); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && G.active && !G.paused && !G.ended) setPaused(true); });
 syncToggles();
 
 // ---------- Three.js scene ----------
-const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
+// The detailed mode's offscreen target supplies MSAA. Smooth mode avoids it entirely.
+const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: false });
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#140a2e');
-scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
 const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
 const CAM_D = 4.2 / Math.tan(THREE.MathUtils.degToRad(17.5));
 const sun = new THREE.DirectionalLight(0xffffff, 1.2); sun.position.set(-3, 5, 8); scene.add(sun);
 scene.add(new THREE.AmbientLight(0x9988dd, 0.6));
-const rt = new THREE.WebGLRenderTarget(512, 512, { type: THREE.HalfFloatType, samples: 4 });
-const composer = new EffectComposer(renderer, rt);
-composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(512, 512), 0.6, 0.5, 1.0);
-composer.addPass(bloom);
-composer.addPass(new OutputPass());
+let composer = null, environmentTarget = null;
 
 // board tiles
 {
@@ -693,14 +694,14 @@ const selMesh = new THREE.Mesh(PLANE, additive(0xffffff, selTex)); selMesh.posit
 const flashMesh = new THREE.Mesh(PLANE, additive(0xffffff)); flashMesh.scale.set(12, 12, 1); flashMesh.position.z = 1; flashMesh.visible = false; scene.add(flashMesh);
 
 // piece geometry: one 3D model per shape
-function starGeo() {
+function starGeo(bevelSegments = 4) {
   const s = new THREE.Shape();
   for (let i = 0; i < 10; i++) {
     const a = Math.PI / 2 + i * Math.PI / 5, rr = i % 2 ? 0.19 : 0.41;
     s[i ? 'lineTo' : 'moveTo'](Math.cos(a) * rr, Math.sin(a) * rr);
   }
   s.closePath();
-  const g = new THREE.ExtrudeGeometry(s, { depth: 0.14, bevelEnabled: true, bevelThickness: 0.07, bevelSize: 0.05, bevelSegments: 4 });
+  const g = new THREE.ExtrudeGeometry(s, { depth: 0.14, bevelEnabled: true, bevelThickness: 0.07, bevelSize: 0.05, bevelSegments });
   g.center(); return g;
 }
 const GEOS = [
@@ -709,6 +710,13 @@ const GEOS = [
   new THREE.TorusGeometry(0.26, 0.125, 20, 44),
   starGeo(),
   new THREE.OctahedronGeometry(0.46).scale(0.8, 1, 0.62),
+];
+const SIMPLE_GEOS = [
+  new THREE.SphereGeometry(0.37, 16, 12),
+  new RoundedBoxGeometry(0.64, 0.64, 0.4, 1, 0.11),
+  new THREE.TorusGeometry(0.26, 0.125, 8, 24),
+  starGeo(2),
+  GEOS[4],
 ];
 const BAR = new THREE.BoxGeometry(0.62, 0.07, 0.07), CONE = new THREE.ConeGeometry(0.1, 0.18, 14);
 const CORE = new THREE.SphereGeometry(0.17, 20, 14), SPARK = new THREE.SphereGeometry(0.055, 10, 8), HALO = new THREE.RingGeometry(0.4, 0.48, 40);
@@ -731,8 +739,11 @@ const pieceGroup = new THREE.Group(), fxGroup = new THREE.Group(); scene.add(pie
 let liveMeshes = new Set(), liveFx = new Set();
 function buildMesh(p) {
   const g = new THREE.Group(), color = new THREE.Color(SHAPES[p.t].color);
-  const mat = new THREE.MeshStandardMaterial({ color, metalness: 0.3, roughness: p.t === 0 || p.t === 2 ? 0.28 : 0.5, emissive: color, emissiveIntensity: 0.16, envMapIntensity: 0.55, flatShading: p.t === 4 });
-  const main = new THREE.Mesh(GEOS[p.t], mat); g.add(main);
+  const base = { color, emissive: color, emissiveIntensity: 0.16, flatShading: p.t === 4 };
+  const mat = save.smooth
+    ? new THREE.MeshPhongMaterial({ ...base, shininess: 45, specular: 0x555555 })
+    : new THREE.MeshStandardMaterial({ ...base, metalness: 0.3, roughness: p.t === 0 || p.t === 2 ? 0.28 : 0.5, envMapIntensity: 0.55 });
+  const main = new THREE.Mesh((save.smooth ? SIMPLE_GEOS : GEOS)[p.t], mat); g.add(main);
   const extra = new THREE.Group(); g.add(extra);
   if (p.sp === 'line') {
     const bar = new THREE.Mesh(BAR, WHITE), a = new THREE.Mesh(CONE, WHITE), b = new THREE.Mesh(CONE, WHITE);
@@ -827,13 +838,19 @@ function sync(time) {
     pPos[i * 3] = q.x; pPos[i * 3 + 1] = q.y; pPos[i * 3 + 2] = q.z;
     pCol[i * 3] = q.r * f; pCol[i * 3 + 1] = q.g * f; pCol[i * 3 + 2] = q.b * f;
   }
-  pGeo.setDrawRange(0, n); pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true;
+  points.visible = n > 0;
+  pGeo.setDrawRange(0, n);
+  if (n) { pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true; }
 
   const sh = G.shake * 0.18;
   camera.position.set(Math.sin(time * 0.35) * 0.45 + (Math.random() - 0.5) * sh, Math.cos(time * 0.28) * 0.3 + (Math.random() - 0.5) * sh, CAM_D);
   camera.lookAt(0, 0, 0);
 }
-function render(time) { sync(time); composer.render(); }
+function render(time) {
+  sync(time);
+  if (composer) composer.render();
+  else renderer.render(scene, camera);
+}
 
 const v3 = new THREE.Vector3();
 function floatText(col, row, text, pts) {
@@ -885,13 +902,40 @@ cv.addEventListener('pointerup', endDrag); cv.addEventListener('pointercancel', 
 
 // ---------- loop ----------
 function resize() {
-  const wrap = $('boardWrap'), pr = Math.min(window.devicePixelRatio || 1, 2);
+  const wrap = $('boardWrap'), pr = Math.min(window.devicePixelRatio || 1, save.smooth ? 1 : 2);
   size = Math.max(160, Math.floor(Math.min(wrap.clientWidth, wrap.clientHeight - 4, 640)));
   renderer.setPixelRatio(pr); renderer.setSize(size, size, false);
-  composer.setPixelRatio(pr); composer.setSize(size, size);
+  if (composer) { composer.setPixelRatio(pr); composer.setSize(size, size); }
   cv.style.width = cv.style.height = size + 'px';
 }
 window.addEventListener('resize', resize);
+
+function applyGraphics() {
+  if (composer) {
+    composer.passes.forEach(pass => pass.dispose());
+    composer.dispose(); composer = null;
+  }
+  scene.environment = null;
+  if (environmentTarget) { environmentTarget.dispose(); environmentTarget = null; }
+  if (!save.smooth) {
+    const room = new RoomEnvironment(), generator = new THREE.PMREMGenerator(renderer);
+    environmentTarget = generator.fromScene(room, 0.04);
+    scene.environment = environmentTarget.texture;
+    generator.dispose(); room.dispose();
+    const rt = new THREE.WebGLRenderTarget(size, size, { type: THREE.HalfFloatType, samples: 4 });
+    composer = new EffectComposer(renderer, rt);
+    composer.addPass(new RenderPass(scene, camera));
+    composer.addPass(new UnrealBloomPass(new THREE.Vector2(size, size), 0.6, 0.5, 1.0));
+    composer.addPass(new OutputPass());
+  }
+  // Rebuild piece meshes with the chosen geometry and lighting, preserving the board.
+  for (const mesh of liveMeshes) { pieceGroup.remove(mesh); mesh.userData.mat.dispose(); }
+  liveMeshes.clear();
+  if (G.grid) for (const row of G.grid) for (const p of row) if (p) p.mesh = null;
+  for (const d of G.dying) d.p.mesh = null;
+  if (save.smooth) G.parts = G.parts.slice(0, 250);
+  resize();
+}
 
 function update(dt) {
   let moving = false;
@@ -933,13 +977,13 @@ let last = 0;
 function frame(ts) {
   const dt = Math.min(0.05, (ts - last) / 1000); last = ts;
   if (G.active && !G.paused && G.grid) update(dt);
-  if (G.active) render(ts / 1000);
+  if (G.active && !G.paused && !document.hidden) render(ts / 1000);
   requestAnimationFrame(frame);
 }
-resize();
+applyGraphics();
 requestAnimationFrame(frame);
 // exposed for debugging in the console
-window.__mb = { G, save, sfx, startLevel, quit, show, setPaused, update, render, settled, trySwap, formsMatch, findMove, findMatches, clearStep, gravity, mk };
+window.__mb = { G, save, sfx, renderer, startLevel, quit, show, setPaused, update, render, settled, trySwap, formsMatch, findMove, findMatches, clearStep, gravity, mk };
 </script>
 </body>
 </html>

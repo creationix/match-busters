@@ -10,9 +10,9 @@ const root = path.resolve(__dirname, '..');
 const prefix = '/match-busters/';
 let browser, server, origin, legacy = false;
 
-// An installed v2 worker and shell, for testing the update path.
+// An installed v3 worker and shell, for testing the update path.
 const legacyWorker = `
-const CACHE = 'match-busters-v2';
+const CACHE = 'match-busters-v3';
 self.addEventListener('install', e => e.waitUntil(
   caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).then(() => self.skipWaiting())
 ));
@@ -74,8 +74,8 @@ test('all imports resolve locally and are precached without import maps', async 
   assert.equal(visited.size, 13);
 });
 
-async function newPage(t) {
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+async function newPage(t, options = {}) {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, ...options });
   t.after(() => context.close());
   const external = [], errors = [];
   context.on('request', req => {
@@ -110,7 +110,7 @@ test('cold load, a match, and offline reload work under a GitHub Pages subpath',
   await play(page);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v3']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v4']);
   await context.setOffline(true);
   await page.reload();
   await play(page);
@@ -119,14 +119,14 @@ test('cold load, a match, and offline reload work under a GitHub Pages subpath',
   assert.equal(await page.locator('#loadErr').isVisible(), false);
 });
 
-test('an existing v2 installation updates and then works offline', { timeout: 60000 }, async t => {
+test('an existing v3 installation updates and then works offline', { timeout: 60000 }, async t => {
   legacy = true;
   t.after(() => { legacy = false; });
   const { context, page, external, errors } = await newPage(t);
   await page.goto(origin + prefix);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v2']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v3']);
   legacy = false;
   await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.getRegistration();
@@ -134,10 +134,60 @@ test('an existing v2 installation updates and then works offline', { timeout: 60
     await registration.update();
     await changed;
   });
-  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v3');
+  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v4');
   await context.setOffline(true);
   await page.reload();
   await play(page);
   assert.deepEqual(external, []);
   assert.deepEqual(errors, []);
+});
+
+test('smooth graphics reduce Retina rendering cost and persist without changing progress', { timeout: 60000 }, async t => {
+  const { page, errors } = await newPage(t, { viewport: { width: 768, height: 1024 }, deviceScaleFactor: 2 });
+  await page.addInitScript(() => {
+    // Existing progress from before the graphics setting was introduced.
+    if (!localStorage.getItem('matchbusters')) localStorage.setItem('matchbusters', JSON.stringify({ stars: [2], sound: false, music: false }));
+  });
+  await page.goto(origin + prefix);
+  await play(page);
+  assert.equal(await page.evaluate(() => __mb.save.smooth), true);
+  await page.evaluate(() => { __mb.setPaused(true); __mb.show('settings'); });
+  const board = await page.evaluate(() => __mb.G.grid.map(row => row.map(p => p.t)));
+  async function measure() {
+    return page.evaluate(() => {
+      const renderer = __mb.renderer;
+      renderer.info.autoReset = false;
+      renderer.info.reset();
+      __mb.render(0);
+      const stats = { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
+        pixels: renderer.domElement.width * renderer.domElement.height,
+        material: __mb.G.grid[0][0].mesh.userData.mat.type };
+      renderer.info.autoReset = true;
+      return stats;
+    });
+  }
+  const smooth = await measure();
+  assert.equal(smooth.material, 'MeshPhongMaterial');
+  await page.getByRole('switch', { name: 'Smooth graphics' }).click();
+  const detailed = await measure();
+  assert.equal(detailed.material, 'MeshStandardMaterial');
+  assert.equal(detailed.pixels, smooth.pixels * 4);
+  assert.ok(smooth.triangles < detailed.triangles / 2, JSON.stringify({ smooth, detailed }));
+  assert.ok(smooth.calls < detailed.calls, JSON.stringify({ smooth, detailed }));
+  assert.deepEqual(await page.evaluate(() => __mb.G.grid.map(row => row.map(p => p.t))), board);
+  // Pausing must stop submitting frames to the GPU.
+  await page.evaluate(() => { __mb.renderer.info.autoReset = false; __mb.renderer.info.reset(); });
+  await page.waitForTimeout(200);
+  assert.equal(await page.evaluate(() => __mb.renderer.info.render.calls), 0);
+  await page.reload();
+  await page.waitForFunction(() => !!window.__mb);
+  assert.equal(await page.evaluate(() => __mb.save.smooth), false);
+  assert.deepEqual(await page.evaluate(() => __mb.save.stars), [2]);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('switch', { name: 'Smooth graphics' }).click();
+  await page.reload();
+  await play(page);
+  assert.equal(await page.evaluate(() => __mb.save.smooth), true);
+  assert.deepEqual(errors, []);
+  t.diagnostic(JSON.stringify({ smooth, detailed }));
 });
