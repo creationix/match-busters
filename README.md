@@ -36,7 +36,7 @@ Smooth graphics uses Canvas 2D with cached sprites and fewer particles. It does 
 
 Nine original synthesized songs rotate automatically, including during long levels. Score levels use **Starlight Shuffle** (the original arpeggio, now with a contrasting middle section), **Sunbeam Steps**, and **Moonlit Mosaic**. Timed levels use the faster **Neon Sprint**, **Clockwork Dash**, and **Final Lap**, with driving bass and percussion. Collection levels use the slower **Glass Garden**, **Lantern Study**, and **Quiet Constellations**, with soft bells, spacious phrasing, and gentle harmony.
 
-Each song has a sixteen-bar arrangement, and transitions fade between tracks. Changing levels rotates that level type's playlist; menus and results return to the relaxed themes. Everything is generated locally with Web Audio and works offline. The Music setting remains independent of sound effects, and muting music stops scheduling its voices.
+Each song has a sixteen-bar arrangement, and transitions fade between tracks. Changing levels rotates that level type's playlist; menus and results return to the relaxed themes. Music pauses with the game, including during graphics-choice dialogs and when the tab is hidden, and resumes the same track when play continues. Everything is generated locally with Web Audio and works offline. The Music setting remains independent of sound effects, and muting music stops scheduling its voices.
 
 ## Vendored Three.js
 

@@ -120,7 +120,7 @@
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
 </div>
 
-<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 g</div><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 h</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Match Busters</h1>
   <p class="sub">Swap. Match three. Bust them all.</p>
@@ -224,6 +224,7 @@ function initAudio() {
     sfxGain = AC.createGain(); sfxGain.gain.value = 1; sfxGain.connect(AC.destination);
     musicPlayer = createMusicPlayer(AC, musicGain);
     musicPlayer.setCategory(musicKind); musicPlayer.setEnabled(save.music);
+    syncMusicPlayback();
     setInterval(() => musicPlayer.tick(), 100);
   }
   if (AC.state === 'suspended') AC.resume();
@@ -272,9 +273,14 @@ const sfx = {
   lose()   { if (on()) [392, 329.63, 261.63, 196].forEach((f, i) => tone(f, 0.4, 'triangle', 0.2, i * 0.2)); },
 };
 function setMusicCategory(kind) {
-  if (kind === 'menu' && musicKind === 'menu') return;
-  musicKind = kind;
-  if (musicPlayer) musicPlayer.setCategory(kind);
+  if (kind !== 'menu' || musicKind !== 'menu') {
+    musicKind = kind;
+    if (musicPlayer) musicPlayer.setCategory(kind);
+  }
+  syncMusicPlayback();
+}
+function syncMusicPlayback() {
+  if (musicPlayer) musicPlayer.setPaused(document.hidden || (G.active && G.paused));
 }
 window.addEventListener('pointerdown', initAudio, true);
 window.addEventListener('keydown', initAudio, true);
@@ -648,6 +654,7 @@ function setPaused(p) {
   if (!G.active || G.ended) return;
   if ($('scrGraphics').classList.contains('show')) return;
   G.paused = p; show(p ? 'pause' : null);
+  syncMusicPlayback();
 }
 document.querySelectorAll('[data-go]').forEach(b => b.onclick = () => show(b.dataset.go));
 $('pauseBtn').onclick = () => setPaused(true);
@@ -661,6 +668,7 @@ function syncToggles() {
   $('tSound').classList.toggle('on', save.sound); $('tMusic').classList.toggle('on', save.music);
   $('graphicsMode').value = save.smooth ? 'smooth' : save.extreme ? 'extreme' : 'fancy';
   if (musicPlayer) musicPlayer.setEnabled(save.music);
+  syncMusicPlayback();
 }
 $('tSound').onclick = () => { save.sound = !save.sound; persist(); syncToggles(); sfx.pop(1); };
 $('tMusic').onclick = () => { save.music = !save.music; persist(); syncToggles(); };
@@ -676,12 +684,16 @@ $('lowerGraphicsBtn').onclick = async () => {
   persist(); syncToggles();
   await applyGraphics();
   G.paused = false; show(null);
+  syncMusicPlayback();
   $('lowerGraphicsBtn').disabled = $('keepGraphicsBtn').disabled = false;
 };
-$('keepGraphicsBtn').onclick = () => { save.keep3D = true; persist(); G.paused = false; show(null); frameRate.reset(); };
+$('keepGraphicsBtn').onclick = () => { save.keep3D = true; persist(); G.paused = false; show(null); syncMusicPlayback(); frameRate.reset(); };
 $('resetBtn').onclick = () => { if (confirm('Erase all level progress?')) { save.stars = []; persist(); } };
 window.addEventListener('keydown', e => { if (e.key === 'Escape' || e.key === 'p') setPaused(!G.paused); });
-document.addEventListener('visibilitychange', () => { if (document.hidden && G.active && !G.paused && !G.ended) setPaused(true); });
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden && G.active && !G.paused && !G.ended) setPaused(true);
+  syncMusicPlayback();
+});
 syncToggles();
 
 // ---------- rendering ----------
@@ -811,6 +823,7 @@ function frame(ts) {
       $('lowerGraphicsBtn').textContent = save.extreme ? 'Use Fancy graphics' : 'Use smooth graphics';
       $('keepGraphicsBtn').textContent = save.extreme ? 'Keep Extreme' : 'Keep Fancy';
       G.paused = true; G.sel = null; G.drag = null; show('graphics');
+      syncMusicPlayback();
       $('lowerGraphicsBtn').focus();
     }
   } else frameRate.reset();

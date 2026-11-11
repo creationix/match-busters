@@ -73,20 +73,20 @@ export function createMusicPlayer(context, destination) {
   const lists = Object.fromEntries(['score', 'timed', 'collect'].map(kind => [kind, SONGS.filter(song => song.category === kind)]));
   lists.menu = lists.score;
   const cursors = { score: 0, timed: 0, collect: 0, menu: 0 };
-  let category = 'menu', selected = null, enabled = false, step = 0, nextTime = 0, bus = null;
+  let category = 'menu', selected = null, enabled = false, paused = false, step = 0, nextTime = 0, bus = null;
 
   function makeBus(time) {
     const gain = context.createGain(); gain.connect(destination);
     gain.gain.setValueAtTime(0, time); gain.gain.linearRampToValueAtTime(1, time + 0.15);
     return { gain, voices: new Set(), retired: false };
   }
-  function retire(time) {
+  function retire(time, fade = 0.18) {
     if (!bus) return;
     const old = bus; bus = null; old.retired = true;
     old.gain.gain.cancelScheduledValues(time);
     old.gain.gain.setValueAtTime(old.gain.gain.value, time);
-    old.gain.gain.linearRampToValueAtTime(0, time + 0.18);
-    for (const voice of old.voices) voice.osc.stop(Math.min(voice.end, time + 0.2));
+    old.gain.gain.linearRampToValueAtTime(0, time + fade);
+    for (const voice of old.voices) voice.osc.stop(Math.min(voice.end, time + fade + 0.02));
     if (!old.voices.size) old.gain.disconnect();
   }
   function oscillator(note, duration, type, volume, time, target, slide = null) {
@@ -116,7 +116,7 @@ export function createMusicPlayer(context, destination) {
     const playlist = lists[category];
     selected = playlist[cursors[category]++ % playlist.length];
     step = 0; nextTime = time;
-    if (enabled) bus = makeBus(time);
+    if (enabled && !paused) bus = makeBus(time);
   }
   function schedule(time) {
     const eighth = 30 / selected.bpm, barSteps = selected.beats * 2;
@@ -155,14 +155,25 @@ export function createMusicPlayer(context, destination) {
       if (enabled === value) return;
       enabled = value;
       if (!enabled) retire(context.currentTime);
-      else {
+      else if (!paused) {
         if (!selected) choose(context.currentTime + 0.05);
         step = 0; nextTime = context.currentTime + 0.05;
         if (!bus) bus = makeBus(nextTime);
       }
     },
+    setPaused(value) {
+      value = !!value;
+      if (paused === value) return;
+      paused = value;
+      if (paused) retire(context.currentTime, 0.08);
+      else if (enabled) {
+        if (!selected) choose(context.currentTime + 0.05);
+        nextTime = context.currentTime + 0.05;
+        if (!bus) bus = makeBus(nextTime);
+      }
+    },
     tick(now = context.currentTime) {
-      if (!enabled || context.state !== 'running') return;
+      if (!enabled || paused || context.state !== 'running') return;
       if (!selected) choose(now + 0.05);
       if (nextTime < now) nextTime = now + 0.05; // Never queue a backlog after a stalled tab.
       while (nextTime < now + 0.2) {
@@ -170,7 +181,7 @@ export function createMusicPlayer(context, destination) {
         if (step === selected.bars.length * selected.beats * 2) choose(nextTime);
       }
     },
-    get state() { return { title: selected && selected.title, category, bpm: selected && selected.bpm, enabled, step }; },
+    get state() { return { title: selected && selected.title, category, bpm: selected && selected.bpm, enabled, paused, step }; },
     dispose() { enabled = false; retire(context.currentTime); },
   };
 }

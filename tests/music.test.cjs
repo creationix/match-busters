@@ -103,3 +103,29 @@ test('track changes fade out and disconnect old voices rather than accumulating 
   assert.ok(oscillators.every(osc => osc.ended && osc.disconnected));
   assert.ok(gains.every(gain => gain.disconnected));
 });
+
+test('pause stops voices and scheduling, then resumes the same song and position without overriding mute', async () => {
+  const { createMusicPlayer } = await import('../music.js');
+  const { context, oscillators, destination } = audioClock();
+  const player = createMusicPlayer(context, destination);
+  player.setCategory('collect'); player.setEnabled(true);
+  for (let t = 0; t < 2; t += 0.1) { context.advance(t); player.tick(); }
+  const before = player.state, count = oscillators.length;
+  player.setPaused(true);
+  context.advance(12); player.tick();
+  assert.equal(oscillators.length, count);
+  assert.ok(oscillators.every(osc => osc.ended && osc.disconnected));
+  assert.equal(player.state.enabled, true);
+  assert.equal(player.state.title, before.title);
+  assert.equal(player.state.step, before.step);
+  player.setPaused(false);
+  assert.equal(player.state.step, before.step);
+  player.tick();
+  assert.equal(player.state.title, before.title);
+  assert.ok(player.state.step > before.step);
+  player.setPaused(true); player.setEnabled(false); player.setPaused(false);
+  const muted = oscillators.length;
+  context.advance(15); player.tick();
+  assert.equal(oscillators.length, muted);
+  assert.equal(player.state.enabled, false);
+});

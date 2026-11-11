@@ -10,9 +10,9 @@ const root = path.resolve(__dirname, '..');
 const prefix = '/match-busters/';
 let browser, server, origin, legacy = false;
 
-// An installed v8 worker and shell, for testing the update path.
+// An installed v9 worker and shell, for testing the update path.
 const legacyWorker = `
-const CACHE = 'match-busters-v8';
+const CACHE = 'match-busters-v9';
 self.addEventListener('install', e => e.waitUntil(
   caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).then(() => self.skipWaiting())
 ));
@@ -115,7 +115,7 @@ test('cold load, a match, and offline reload work under a GitHub Pages subpath',
   await play(page);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v9']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v10']);
   await context.setOffline(true);
   await page.reload();
   await play(page);
@@ -188,14 +188,44 @@ test('all nine songs render audible, unclipped audio through real Web Audio node
   t.diagnostic(JSON.stringify(results));
 });
 
-test('an existing v8 installation updates and then works offline', { timeout: 60000 }, async t => {
+test('music follows pause, resume, and tab visibility without changing the Music preference', { timeout: 60000 }, async t => {
+  const { page, errors } = await newPage(t);
+  await page.goto(origin + prefix);
+  await play(page);
+  await page.locator('#pauseBtn').click();
+  const paused = await page.evaluate(() => __mb.music.state);
+  assert.equal(paused.paused, true);
+  assert.equal(paused.enabled, true);
+  await page.waitForTimeout(300);
+  assert.equal(await page.evaluate(() => __mb.music.state.step), paused.step);
+  await page.getByRole('button', { name: 'Resume', exact: true }).click();
+  assert.equal(await page.evaluate(() => __mb.music.state.paused), false);
+  assert.equal(await page.evaluate(() => __mb.music.state.title), paused.title);
+  await page.waitForFunction(step => __mb.music.state.step !== step, paused.step);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  assert.equal(await page.evaluate(() => __mb.G.paused && __mb.music.state.paused), true);
+  await page.evaluate(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  assert.equal(await page.evaluate(() => __mb.music.state.paused), true);
+  await page.getByRole('button', { name: 'Resume', exact: true }).click();
+  assert.equal(await page.evaluate(() => __mb.music.state.paused), false);
+  assert.equal(await page.evaluate(() => __mb.save.music), true);
+  assert.deepEqual(errors, []);
+});
+
+test('an existing v9 installation updates and then works offline', { timeout: 60000 }, async t => {
   legacy = true;
   t.after(() => { legacy = false; });
   const { context, page, external, errors } = await newPage(t);
   await page.goto(origin + prefix);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v8']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v9']);
   legacy = false;
   await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.getRegistration();
@@ -203,7 +233,7 @@ test('an existing v8 installation updates and then works offline', { timeout: 60
     await registration.update();
     await changed;
   });
-  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v9');
+  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v10');
   await context.setOffline(true);
   await page.reload();
   await play(page);
@@ -336,7 +366,7 @@ test('frame-rate detection ignores startup and brief stalls, and detects sustain
 test('3D is the default; slow play pauses for a choice and remembers either choice', { timeout: 60000 }, async t => {
   const { page, errors } = await newPage(t, { smooth: null, viewport: { width: 320, height: 640 }, hasTouch: false });
   await page.addInitScript(() => {
-    if (!localStorage.getItem('matchbusters')) localStorage.setItem('matchbusters', JSON.stringify({ sound: false, music: false }));
+    if (!localStorage.getItem('matchbusters')) localStorage.setItem('matchbusters', JSON.stringify({ sound: false, music: true }));
     // Feed slow frame timestamps without depending on the test host's GPU speed.
     const raf = window.requestAnimationFrame;
     let timestamp = performance.now();
@@ -345,14 +375,17 @@ test('3D is the default; slow play pauses for a choice and remembers either choi
   await page.goto(origin + prefix);
   await page.waitForFunction(() => !!window.__mb);
   assert.equal(await page.evaluate(() => __mb.renderer.kind), 'webgl');
+  await page.locator('#logo').click(); // Unlock real music playback before the automatic pause.
   await page.evaluate(() => __mb.startLevel(2));
   await page.getByRole('dialog', { name: 'Prefer smoother play?' }).waitFor({ state: 'visible' });
   assert.equal(await page.evaluate(() => __mb.G.paused), true);
+  assert.equal(await page.evaluate(() => __mb.music.state.enabled && __mb.music.state.paused), true);
   const timeLeft = await page.evaluate(() => __mb.G.timeLeft);
   await page.waitForTimeout(200);
   assert.equal(await page.evaluate(() => __mb.G.timeLeft), timeLeft);
   await page.getByRole('button', { name: 'Use smooth graphics', exact: true }).click();
   await page.waitForFunction(() => __mb.renderer.kind === 'canvas' && !__mb.G.paused);
+  assert.equal(await page.evaluate(() => __mb.music.state.paused), false);
   await page.reload();
   await page.waitForFunction(() => !!window.__mb);
   assert.equal(await page.evaluate(() => __mb.renderer.kind), 'canvas');
@@ -363,6 +396,7 @@ test('3D is the default; slow play pauses for a choice and remembers either choi
   await page.getByRole('dialog', { name: 'Prefer smoother play?' }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Keep Fancy', exact: true }).click();
   assert.equal(await page.evaluate(() => __mb.save.keep3D && !__mb.G.paused), true);
+  assert.equal(await page.evaluate(() => __mb.music.state.paused), false);
   await page.reload();
   await page.waitForFunction(() => !!window.__mb);
   assert.equal(await page.evaluate(() => __mb.renderer.kind), 'webgl');
