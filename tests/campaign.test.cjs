@@ -42,26 +42,26 @@ async function tap(page,r,c) {
   await page.mouse.click(box.x+point.x*box.width,box.y+point.y*box.height);
 }
 
-test('campaign keeps all 16 saved slots and goal types while introducing thin, thick, and growing frost',async t=>{
+test('campaign keeps all 16 existing saved slots across 24 levels and goal types while introducing thin, thick, and growing frost',async t=>{
   const{page,errors}=await open(t);
-  await page.getByRole('button',{name:'Play',exact:true}).click();assert.equal(await page.locator('.lvBtn:enabled').count(),16);
+  await page.getByRole('button',{name:'Play',exact:true}).click();assert.equal(await page.locator('.lvBtn').count(),24);assert.equal(await page.locator('.lvBtn:enabled').count(),17);
   assert.match(await page.locator('.lvBtn').nth(4).textContent(),/ice/);
   const result=await page.evaluate(()=>{
     const mb=__mb,g=mb.G,checks=[];
-    for(const layout of ['classic','tall','wide'])for(let level=0;level<16;level++){
+    for(const layout of ['classic','tall','wide'])for(let level=0;level<24;level++){
       mb.save.boardLayout=layout;mb.startLevel(level);mb.setPaused(true);
-      checks.push({level,layout,type:g.lv.type,total:g.iceTotal,thick:g.ice.flat().filter(n=>n===2).length,growing:!!g.frost,matches:mb.findMatches().length,moves:!!mb.findMove(),full:g.grid.flat().every(Boolean)});
+      checks.push({level,layout,type:g.lv.type,rows:g.rows,cols:g.cols,starters:g.grid.flat().filter(p=>p.sp).length,total:g.iceTotal,thick:g.ice.flat().filter(n=>n===2).length,growing:!!g.frost,matches:mb.findMatches().length,moves:!!mb.findMove(),full:g.grid.flat().every(Boolean)});
     }
     return{checks,stars:mb.save.stars,lab:JSON.parse(localStorage.getItem('matchbusters-ice-lab')).stars};
   });
-  const types=['score','collect','timed','score','collect','timed','collect','score','score','collect','timed','score','collect','timed','collect','score'];
+  const types=['score','collect','timed','score','collect','timed','collect','score','score','collect','timed','score','collect','timed','collect','score','collect','score','collect','score','collect','score','collect','score'];
   for(const check of result.checks){
-    assert.equal(check.type,types[check.level]);assert.equal(check.matches,0);assert.ok(check.moves&&check.full);
+    assert.equal(check.type,types[check.level]);assert.equal(check.starters,0);assert.equal(check.matches,0);assert.ok(check.moves&&check.full);
     if(check.level<4||check.type==='timed')assert.equal(check.total,0);
-    if(check.level===4)assert.equal(check.total,6);
+    if(check.level===4)assert.equal(check.total,Math.round(6*check.rows*check.cols/64));
     if(check.level<8)assert.equal(check.thick,0);
-    if(check.level===8)assert.equal(check.thick,12);
-    assert.equal(check.growing,[12,14,15].includes(check.level));
+    if(check.level===8)assert.equal(check.thick,check.total);
+    assert.equal(check.growing,(check.level===12||check.level>=14));
   }
   assert.deepEqual(result.stars,stars);assert.deepEqual(result.lab,[1,2,3,1]);
   await page.reload();await page.waitForFunction(()=>window.__mb);assert.deepEqual(await page.evaluate(()=>__mb.save.stars),stars);
@@ -72,7 +72,7 @@ test('offline campaign uses its own shared modules even when an older lab cache 
   const{page,context,errors}=await open(t);
   await page.evaluate(()=>navigator.serviceWorker.ready);await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
   await page.evaluate(async()=>{
-    const name='match-busters-v13',own=await caches.open(name),requests=await own.keys();
+    const name='match-busters-v14',own=await caches.open(name),requests=await own.keys();
     const entries=await Promise.all(requests.map(async req=>[req,await own.match(req)]));
     const lab=await caches.open('ice-lab-stale');
     await lab.put('/match-busters/render-2d.js',new Response('throw Error("Old lab renderer must not load")',{headers:{'Content-Type':'text/javascript'}}));
@@ -92,7 +92,7 @@ test('icy campaign levels require both the original target and thawing, and awar
     const m=__mb,g=m.G;m.startLevel(4);g.collected[4]=g.lv.count;m.checkEnd();
   });
   assert.equal(await page.evaluate(()=>__mb.goalMet()),false);assert.equal(await page.evaluate(()=>__mb.G.ended),false);
-  assert.match(await page.locator('#lvGoal').textContent(),/Thaw all ice/);
+  assert.match(await page.locator('#objectives').textContent(),/Thaw all ice/);
   await page.evaluate(()=>{
     const m=__mb,g=m.G;
     g.grid=Array.from({length:8},(_,r)=>Array.from({length:8},(_,c)=>m.mk((r+c*2)%5,r,c)));
@@ -166,4 +166,41 @@ test('campaign frost, both objectives, and growth warnings fit mobile portraits 
     assert.equal(await page.evaluate(()=>{__mb.render(0);const f=__mb.renderer.frames;for(let i=0;i<120;i++)__mb.render(i/60);return __mb.renderer.frames-f}),0);
     assert.deepEqual(shaderErrors,[]);assert.deepEqual(errors,[]);
   }
+});
+
+
+test('every goal stays visible on narrow portrait and short landscape screens',async t=>{
+  for(const[width,height]of[[320,568],[568,320],[812,375]]){
+    const{page,errors}=await open(t,{viewport:{width,height}});
+    for(const level of[15,18,23]){
+      await page.evaluate(level=>{__mb.save.boardLayout='auto';__mb.startLevel(level);for(const p of __mb.G.grid.flat())p.born=1;__mb.setPaused(true);__mb.show(null);__mb.render(0)},level);
+      const result=await page.evaluate(()=>{
+        const hud=document.getElementById('hud'),header=document.getElementById('hudTop').getBoundingClientRect(),goals=document.getElementById('objectives').getBoundingClientRect();
+        const texts=['lvGoal','iceProgress','iceWarning','sGoal'].map(id=>{
+          const el=document.getElementById(id),box=el.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(el);
+          return{id,text:el.textContent,scrollWidth:el.scrollWidth,width:el.clientWidth,inside:[...range.getClientRects()].every(r=>r.left>=box.left-1&&r.right<=box.right+1&&r.top>=box.top-1&&r.bottom<=box.bottom+1)};
+        });
+        return{texts,goalBelowHeader:goals.top>=header.bottom,scroll:hud.scrollHeight,height:hud.clientHeight,pause:document.getElementById('pauseBtn').getBoundingClientRect().width,board:document.getElementById('board').getBoundingClientRect().width};
+      });
+      assert.ok(result.goalBelowHeader);assert.equal(result.pause,42);assert.ok(result.scroll<=result.height+1,JSON.stringify({width,height,level,result}));
+      for(const text of result.texts){assert.ok(text.inside,JSON.stringify({width,height,level,text}));assert.ok(text.scrollWidth<=text.width+1,JSON.stringify(text))}
+      assert.ok(result.board>140);
+    }
+    await page.screenshot({path:`/tmp/goals-${width}x${height}.png`});assert.deepEqual(errors,[]);
+  }
+});
+
+
+test('new campaigns load random ice even alongside an older cached ice API',async t=>{
+  const{page,errors}=await open(t,{serviceWorkers:'block'});
+  await page.route('**/ice.js*',async route=>{
+    if(new URL(route.request().url()).search){await route.continue();return}
+    await route.fulfill({contentType:'text/javascript',body:"export * from './ice.js?current-art'; export function createIcePlan(){throw Error('Legacy generator must not be used')}"});
+  });
+  await page.reload();await page.waitForFunction(()=>window.__mb);
+  await page.evaluate(()=>__mb.startLevel(23));assert.equal(await page.evaluate(()=>__mb.G.iceTotal),28);
+  assert.equal(await page.evaluate(()=>__mb.G.grid.flat().filter(p=>p.sp).length),0);
+  await page.goto(origin+prefix+'ice-lab/');await page.waitForFunction(()=>window.__mb);
+  await page.evaluate(()=>__mb.startLevel(0));assert.equal(await page.evaluate(()=>__mb.G.iceTotal),6);
+  assert.deepEqual(errors,[]);
 });

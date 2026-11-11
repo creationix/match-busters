@@ -1,33 +1,5 @@
-// Compact islands keep the outer border and a connected playable area open.
-export function createIcePlan(rows, cols, scenario) {
-  const ice = Array.from({ length: rows }, () => Array(cols).fill(0));
-  const powers = new Map();
-  const addGroup = (ry, cx, width = 2, layers = 1) => {
-    const r = Math.max(1, Math.min(rows - 3, Math.floor(rows * ry) - 1));
-    const c = Math.max(1, Math.min(cols - width - 1, Math.floor(cols * cx) - 1));
-    for (let y = r; y < r + 2; y++) for (let x = c; x < c + width; x++) ice[y][x] = layers;
-  };
-  if (scenario === 0) addGroup(0.5, 0.5, 3);
-  if (scenario === 1) { addGroup(0.3, 0.3); addGroup(0.72, 0.72); }
-  if (scenario === 2) { addGroup(0.3, 0.3, 2, 2); addGroup(0.52, 0.72, 2, 2); addGroup(0.8, 0.3, 2, 2); }
-  if (scenario === 3) {
-    addGroup(0.3, 0.3, 2, 2); addGroup(0.3, 0.72);
-    addGroup(0.72, 0.3); addGroup(0.72, 0.72, 2, 2);
-  }
-  const power = (r, c, sp, t = (r + c) % 5, dir = 'h') => {
-    if (r >= 0 && c >= 0 && r < rows && c < cols && !ice[r][c]) powers.set(r * cols + c, { r, c, sp, t, dir });
-  };
-  // Small optional starter pairs, away from the ice. Ordinary matching must
-  // remain useful after these fall, fire, or are ignored entirely.
-  const middle = Math.floor(cols / 2) - 1;
-  if (scenario === 1) { power(rows - 1, middle, 'bomb'); power(rows - 1, middle + 1, 'line'); }
-  if (scenario === 2) { power(rows - 1, middle, 'bomb'); power(rows - 1, middle + 1, 'bomb'); }
-  if (scenario === 3) {
-    const c = Math.floor(cols / 2) - 1;
-    power(rows - 1, c, 'color', 4); power(rows - 1, c + 1, 'bomb', 1);
-  }
-  return { ice, powers: [...powers.values()], total: ice.flat().filter(Boolean).length };
-}
+import { openAreaConnected } from './ice-layout.js';
+export { createIcePlan } from './ice-layout.js';
 
 // Advance only after a completed move; pausing or thinking never grows ice.
 export function createFrostGrowth(ice, config) {
@@ -45,25 +17,12 @@ export function advanceFrost(ice, grid, state, damaged, random = Math.random) {
     if (!ice[r][c] && !state.ever[r][c] && grid[r][c] && !grid[r][c].sp &&
         (ice[r - 1][c] || ice[r + 1][c] || ice[r][c - 1] || ice[r][c + 1])) candidates.push({ r, c });
   }
-  // A growing island must not split the remaining play area into trapped pockets.
-  const connected = () => {
-    const open = ice.flat().filter(n => !n).length, first = ice.flat().findIndex(n => !n);
-    if (first < 0) return false;
-    const queue = [first], seen = new Set(queue);
-    for (let i = 0; i < queue.length; i++) {
-      const r = queue[i] / cols | 0, c = queue[i] % cols;
-      for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
-        const y = r + dr, x = c + dc, k = y * cols + x;
-        if (y >= 0 && x >= 0 && y < rows && x < cols && !ice[y][x] && !seen.has(k)) { seen.add(k); queue.push(k); }
-      }
-    }
-    return seen.size === open;
-  };
+  // Preserve the same open-area rule used during generation.
   const start = Math.floor(random() * candidates.length);
   for (let i = 0; i < candidates.length; i++) {
     const cell = candidates[(start + i) % candidates.length], { r, c } = cell;
     ice[r][c] = 1;
-    if (connected()) { state.ever[r][c] = true; state.remaining--; return cell; }
+    if (openAreaConnected(ice)) { state.ever[r][c] = true; state.remaining--; return cell; }
     ice[r][c] = 0;
   }
   return null;

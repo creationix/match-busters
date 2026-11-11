@@ -31,20 +31,23 @@
   @media (display-mode: standalone) { body { height: 100vh; } }
   #game { height: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;
     padding: calc(10px + var(--sat)) calc(10px + var(--sar)) calc(10px + var(--sab)) calc(10px + var(--sal)); }
-  #hud { width: 100%; max-width: 900px; }
-  #hudTop { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  #hud { width: 100%; max-width: 900px; flex-shrink: 0; min-width: 0; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+  #hudTop { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  #objectives { width: 100%; min-width: 0; margin-bottom: 8px; }
+  #objectives > div { white-space: normal; overflow-wrap: anywhere; }
   #hudTop .title { flex: 1; min-width: 0; }
   #lvName { font-weight: 800; font-size: 17px; }
   #iceProgress, #iceWarning { color: #9edbf6; font-size: 12px; line-height: 1.25; min-height: 1.25em; margin-top: 3px; }
   #iceProgress.done { color: #b4f8c2; }
   #iceWarning.urgent { color: var(--accent); }
   #lvGoal { color: var(--muted); font-size: 13px; line-height: 1.25; }
-  .iconBtn { width: 42px; height: 42px; border-radius: 12px; border: 0; background: var(--panel2); color: var(--text); font-size: 18px; cursor: pointer; }
+  .iconBtn { flex: 0 0 42px; width: 42px; height: 42px; border-radius: 12px; border: 0; background: var(--panel2); color: var(--text); font-size: 18px; cursor: pointer; }
   .iconBtn:hover { filter: brightness(1.2); }
-  #stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-  .stat { background: var(--panel); border-radius: 12px; padding: 6px 10px; text-align: center; }
+  #stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .stat { min-width: 0; background: var(--panel); border-radius: 12px; padding: 6px 10px; text-align: center; }
   .stat .lbl { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-  .stat .val { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; }
+  .stat .val { font-size: clamp(16px, 5.4vw, 22px); font-weight: 800; font-variant-numeric: tabular-nums; display: flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; }
+  #sGoal > canvas { flex-shrink: 0; }
   .stat.warn .val { color: #ff7b7b; }
   .stat.bump .val { animation: bump .25s; }
   @keyframes bump { 40% { transform: scale(1.25); color: var(--accent); } }
@@ -54,11 +57,18 @@
   /* A side HUD leaves the whole screen height for wide boards. */
   @media (orientation: landscape) {
     #game { flex-direction: row; align-items: center; justify-content: center; gap: 14px; }
-    #hud { width: clamp(168px, 20vw, 240px); flex: none; }
+    #hud { width: clamp(184px, 23vw, 280px); flex: none; }
     #iceWarning { min-height: 2.5em; }
     #stats { grid-template-columns: 1fr; gap: 6px; }
     .stat { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; }
     #boardWrap { flex: 1; width: 0; height: 100%; }
+  }
+  @media (orientation: landscape) and (max-height: 420px) {
+    #stats { gap: 4px; }
+    .stat { padding: 4px 10px; }
+    .stat .val { min-height: 26px; font-size: 20px; }
+    #lvGoal { font-size: 12px; }
+    #bar { height: 6px; margin-top: 6px; }
   }
   #stage { position: relative; line-height: 0; }
   #board { display: block; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.5), 0 0 0 2px rgba(255,255,255,.07), 0 0 60px rgba(120,80,255,.25); cursor: pointer; touch-action: none; }
@@ -113,8 +123,9 @@
   <div id="hud">
     <div id="hudTop">
       <button class="iconBtn" id="pauseBtn" title="Pause (Esc)">&#10074;&#10074;</button>
-      <div class="title"><div id="lvName">Level 1</div><div id="lvGoal"></div><div id="iceProgress" hidden></div><div id="iceWarning" hidden aria-live="polite"></div></div>
+      <div class="title"><div id="lvName">Level 1</div></div>
     </div>
+    <div id="objectives" role="group" aria-label="Level goals"><div id="lvGoal"></div><div id="iceProgress" hidden></div><div id="iceWarning" hidden aria-live="polite"></div></div>
     <div id="stats">
       <div class="stat" id="sScoreBox"><div class="lbl">Score</div><div class="val" id="sScore">0</div></div>
       <div class="stat"><div class="lbl" id="sGoalLbl">Goal</div><div class="val" id="sGoal">0</div></div>
@@ -125,7 +136,7 @@
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
 </div>
 
-<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 k</div><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 l</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Match Busters</h1>
   <p class="sub">Swap. Match three. Bust them all.</p>
@@ -184,7 +195,9 @@ import { createCanvasRenderer } from './render-2d.js';
 import { createFrameRateMonitor } from './frame-rate.js';
 import { createMusicPlayer } from './music.js';
 import { chooseBoardShape, fitBoard } from './board-layout.js';
-import { createIcePlan, createFrostGrowth, advanceFrost } from './ice.js';
+import { LEVELS } from './levels.js';
+import { createIcePlan } from './ice-layout.js';
+import { createFrostGrowth, advanceFrost } from './ice.js';
 
 window.__mbStarting = true;
 const TAU = Math.PI * 2, PMAX = 2000;
@@ -196,24 +209,7 @@ const SHAPES = [
   { name: 'Star',     plural: 'orange stars',     color: '#fb923c', dark: '#b8520b', light: '#ffdcb8' },
   { name: 'Diamond',  plural: 'purple diamonds',  color: '#a855f7', dark: '#6420a0', light: '#e4c6ff' },
 ];
-const LEVELS = [
-  { type: 'score',   goal: 1500, moves: 20 },
-  { type: 'collect', shape: 0, count: 25, moves: 18 },
-  { type: 'timed',   goal: 2000, time: 60 },
-  { type: 'score',   goal: 2800, moves: 24 },
-  { type: 'collect', shape: 4, count: 35, moves: 26, ice: 0 },
-  { type: 'timed',   goal: 3500, time: 90 },
-  { type: 'collect', shape: 3, count: 45, moves: 29, ice: 1 },
-  { type: 'score',   goal: 4500, moves: 32, ice: 1 },
-  { type: 'score',   goal: 6000, moves: 36, ice: 2 },
-  { type: 'collect', shape: 2, count: 55, moves: 32, ice: 0 },
-  { type: 'timed',   goal: 5000, time: 90 },
-  { type: 'score',   goal: 7500, moves: 40, ice: 2 },
-  { type: 'collect', shape: 1, count: 70, moves: 36, ice: 3, growth: { after: 4, limit: 4 } },
-  { type: 'timed',   goal: 6500, time: 105 },
-  { type: 'collect', shape: 3, count: 80, moves: 40, ice: 3, growth: { after: 3, limit: 6 } },
-  { type: 'score',   goal: 10000, moves: 48, ice: 3, growth: { after: 3, limit: 8 } },
-];
+
 const $ = id => document.getElementById(id);
 const fmt = n => n.toLocaleString('en-US');
 
@@ -695,10 +691,7 @@ function endLevel(win) {
 
 // ---------- HUD / screens ----------
 function goalText(lv) {
-  const text = lv.type === 'score' ? 'Score ' + fmt(lv.goal) + ' points in ' + lv.moves + ' moves'
-    : lv.type === 'timed' ? 'Score ' + fmt(lv.goal) + ' points in ' + lv.time + ' seconds'
-    : 'Clear ' + lv.count + ' ' + SHAPES[lv.shape].plural + ' in ' + lv.moves + ' moves';
-  return text + (Number.isInteger(lv.ice) ? ' · Thaw all ice' : '');
+  return lv.type === 'collect' ? 'Collect ' + lv.count + ' ' + SHAPES[lv.shape].plural : 'Score ' + fmt(lv.goal) + ' points';
 }
 function frostWarning(state) {
   const warning = $('iceWarning'); warning.hidden = !state;
@@ -712,7 +705,7 @@ function hud(bump) {
   const lv = G.lv; if (!lv) return;
   frostWarning(G.frost);
   $('iceProgress').hidden = !G.iceTotal;
-  $('iceProgress').textContent = 'Ice: ' + G.thawed + '/' + G.iceTotal + ' thawed';
+  $('iceProgress').textContent = 'Thaw all ice: ' + G.thawed + '/' + G.iceTotal;
   $('iceProgress').classList.toggle('done', G.thawed >= G.iceTotal);
   $('sScore').textContent = fmt(G.score);
   if (bump) { const b = $('sScoreBox'); b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
@@ -744,9 +737,9 @@ function buildLevels() {
     const unlocked = i === 0 || (save.stars[i - 1] || 0) > 0;
     b.className = 'lvBtn'; b.disabled = !unlocked;
     b.innerHTML = unlocked
-      ? i + 1 + '<small>' + '★'.repeat(st) + '☆'.repeat(3 - st) + '</small><span class="kind">' + lv.type + (Number.isInteger(lv.ice) ? ' · ice' : '') + '</span>'
+      ? i + 1 + '<small>' + '★'.repeat(st) + '☆'.repeat(3 - st) + '</small><span class="kind">' + lv.type + (lv.ice ? ' · ice' : '') + '</span>'
       : '🔒';
-    b.title = goalText(lv);
+    b.title = goalText(lv) + (lv.ice ? ' · Thaw all ice' : '') + ' · ' + (lv.moves ? lv.moves + ' moves' : lv.time + ' seconds');
     b.onclick = () => startLevel(i);
     grid.appendChild(b);
   });
@@ -766,12 +759,12 @@ function startLevel(i) {
   setMusicCategory(lv.type);
   $('floats').innerHTML = '';
   show(null); $('lvGoal').textContent = goalText(lv);
-  $('iceProgress').hidden = !Number.isInteger(lv.ice);
-  $('iceProgress').textContent = Number.isInteger(lv.ice) ? 'Ice: 0/' + [6,8,12,16][lv.ice] + ' thawed' : '';
+  $('iceProgress').hidden = !lv.ice;
+  $('iceProgress').textContent = lv.ice ? 'Thaw all ice' : '';
   frostWarning(lv.growth ? { after: lv.growth.after, remaining: lv.growth.limit, quiet: 0 } : null);
   const wrap = $('boardWrap');
   Object.assign(G, chooseBoardShape(save.boardLayout, wrap.clientWidth, wrap.clientHeight));
-  const plan = Number.isInteger(lv.ice) ? createIcePlan(G.rows,G.cols,lv.ice)
+  const plan = lv.ice ? createIcePlan(G.rows,G.cols,lv.ice)
     : { ice: Array.from({ length: G.rows }, () => Array(G.cols).fill(0)), powers: [], total: 0 };
   G.ice = plan.ice; G.iceInitial = plan.ice.map(row => row.slice()); G.iceTotal = plan.total; G.thawed = 0; G.iceVersion++;
   G.frost = createFrostGrowth(G.ice,lv.growth);
@@ -790,7 +783,8 @@ function startLevel(i) {
   const goalEl = $('sGoal'); goalEl.innerHTML = '';
   if (lv.type === 'collect') {
     $('sGoalLbl').textContent = 'Collect';
-    goalEl.appendChild(iconCanvas(lv.shape, 26));
+    const icon = iconCanvas(lv.shape, 26); icon.style.width = icon.style.height = '1.1em';
+    goalEl.appendChild(icon);
     const s = document.createElement('span'); s.id = 'sGoalTxt'; goalEl.appendChild(s);
   } else $('sGoalLbl').textContent = 'Goal';
   show(null); resize(); hud();

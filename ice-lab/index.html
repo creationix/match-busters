@@ -31,14 +31,16 @@
   @media (display-mode: standalone) { body { height: 100vh; } }
   #game { height: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;
     padding: calc(10px + var(--sat)) calc(10px + var(--sar)) calc(10px + var(--sab)) calc(10px + var(--sal)); }
-  #hud { width: 100%; max-width: 900px; }
-  #hudTop { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  #hud { width: 100%; max-width: 900px; flex-shrink: 0; min-width: 0; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
+  #hudTop { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  #objectives { width: 100%; min-width: 0; margin-bottom: 8px; }
+  #objectives > div { white-space: normal; overflow-wrap: anywhere; }
   #hudTop .title { flex: 1; min-width: 0; }
   #lvName { font-weight: 800; font-size: 17px; }
   #iceWarning { color: #9edbf6; font-size: 12px; line-height: 1.25; min-height: 1.25em; margin-top: 3px; }
   #iceWarning.urgent { color: var(--accent); }
   #lvGoal { color: var(--muted); font-size: 13px; line-height: 1.25; }
-  .iconBtn { width: 42px; height: 42px; border-radius: 12px; border: 0; background: var(--panel2); color: var(--text); font-size: 18px; cursor: pointer; }
+  .iconBtn { flex: 0 0 42px; width: 42px; height: 42px; border-radius: 12px; border: 0; background: var(--panel2); color: var(--text); font-size: 18px; cursor: pointer; }
   .iconBtn:hover { filter: brightness(1.2); }
   #stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
   .stat { background: var(--panel); border-radius: 12px; padding: 6px 10px; text-align: center; }
@@ -53,7 +55,7 @@
   /* A side HUD leaves the whole screen height for wide boards. */
   @media (orientation: landscape) {
     #game { flex-direction: row; align-items: center; justify-content: center; gap: 14px; }
-    #hud { width: clamp(168px, 20vw, 240px); flex: none; }
+    #hud { width: clamp(184px, 23vw, 280px); flex: none; }
     #iceWarning { min-height: 2.5em; }
     #stats { grid-template-columns: 1fr; gap: 6px; }
     .stat { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; }
@@ -112,8 +114,9 @@
   <div id="hud">
     <div id="hudTop">
       <button class="iconBtn" id="pauseBtn" title="Pause (Esc)">&#10074;&#10074;</button>
-      <div class="title"><div id="lvName">Level 1</div><div id="lvGoal"></div><div id="iceWarning" hidden aria-live="polite"></div></div>
+      <div class="title"><div id="lvName">Level 1</div></div>
     </div>
+    <div id="objectives" role="group" aria-label="Level goals"><div id="lvGoal"></div><div id="iceWarning" hidden aria-live="polite"></div></div>
     <div id="stats">
       <div class="stat" id="sScoreBox"><div class="lbl">Score</div><div class="val" id="sScore">0</div></div>
       <div class="stat"><div class="lbl" id="sGoalLbl">Goal</div><div class="val" id="sGoal">0</div></div>
@@ -124,7 +127,7 @@
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
 </div>
 
-<div class="screen show" id="scrMenu"><div id="ver">Ice Lab · build 2026-11-11 e</div><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">Ice Lab · build 2026-11-11 f</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Ice Lab</h1>
   <p class="sub">Experimental ice and power-up combinations.</p>
@@ -185,7 +188,8 @@ import { createCanvasRenderer } from './render-2d.js';
 import { createFrameRateMonitor } from './frame-rate.js';
 import { createMusicPlayer } from './music.js';
 import { chooseBoardShape, fitBoard } from './board-layout.js';
-import { createIcePlan, createFrostGrowth, advanceFrost } from './ice.js';
+import { createIcePlan } from '../ice-layout.js';
+import { createFrostGrowth, advanceFrost } from './ice.js';
 
 window.__mbStarting = true;
 const TAU = Math.PI * 2, PMAX = 2000;
@@ -688,7 +692,7 @@ function endLevel(win) {
 
 // ---------- HUD / screens ----------
 function goalText(lv) {
-  if (lv.type === 'thaw') return 'Thaw all ice in ' + lv.moves + ' moves. ' + lv.tip;
+  if (lv.type === 'thaw') return 'Thaw all ice. ' + lv.tip;
   if (lv.type === 'score') return 'Score ' + fmt(lv.goal) + ' points in ' + lv.moves + ' moves';
   if (lv.type === 'timed') return 'Score ' + fmt(lv.goal) + ' points in ' + lv.time + ' seconds';
   return 'Clear ' + lv.count + ' ' + SHAPES[lv.shape].plural + ' in ' + lv.moves + ' moves';

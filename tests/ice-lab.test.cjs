@@ -66,7 +66,7 @@ function ordinaryIceMove() {
   return best;
 }
 
-test('ice islands and starter powers remain reachable on every board shape', async () => {
+test('generated ice leaves a connected playable area on every board shape', async () => {
   const { createIcePlan } = await import('../ice-lab/ice.js');
   for (const [rows, cols] of [[8, 8], [12, 8], [8, 12], [16, 8], [8, 16]]) for (let scenario = 0; scenario < 4; scenario++) {
     const plan = createIcePlan(rows, cols, scenario);
@@ -134,7 +134,7 @@ test('the lab precaches its complete import graph without sharing the main cache
       if (!seen.has(target)) { seen.add(target); await imports(target); }
     }
   }
-  await imports(path.join(root, 'ice-lab/index.html')); assert.equal(seen.size, 23);
+  await imports(path.join(root, 'ice-lab/index.html')); assert.equal(seen.size, 24);
 });
 
 test('a new player thaws the first board through ordinary swaps; saves and offline cache stay isolated', { timeout: 60000 }, async t => {
@@ -142,7 +142,7 @@ test('a new player thaws the first board through ordinary swaps; saves and offli
   await page.goto(origin + '/'); await page.waitForFunction(() => !!window.__mb);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  await page.evaluate(async () => { const old = await caches.open('ice-lab-v4'); await old.put('/ice-lab/index.html', new Response('Old lab')); });
+  await page.evaluate(async () => { const old = await caches.open('ice-lab-v5'); await old.put('/ice-lab/index.html', new Response('Old lab')); });
   await ready(page);
   await page.waitForFunction(() => navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL.endsWith('/ice-lab/sw.js'));
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -169,8 +169,8 @@ test('a new player thaws the first board through ordinary swaps; saves and offli
   assert.ok(await page.evaluate(() => JSON.parse(localStorage.getItem('matchbusters-ice-lab')).stars[0] > 0));
   assert.equal(await page.evaluate(() => localStorage.getItem('matchbusters')), mainSave);
   const caches = await page.evaluate(() => window.caches.keys());
-  assert.ok(caches.includes('match-busters-v13') && caches.includes('ice-lab-v5'));
-  assert.ok(!caches.includes('ice-lab-v4'));
+  assert.ok(caches.includes('match-busters-v14') && caches.includes('ice-lab-v6'));
+  assert.ok(!caches.includes('ice-lab-v5'));
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => !!window.__mb);
   assert.ok(await page.evaluate(() => __mb.save.stars[0] > 0));
   assert.equal(await page.evaluate(() => localStorage.getItem('matchbusters')), mainSave);
@@ -227,7 +227,7 @@ test('hard-board growth follows real moves, warns before spreading, resets on ch
   assert.deepEqual(errors, []);
 });
 
-test('all four experiments remain winnable after removing starter powers on square, tall, and wide boards', { timeout: 60000 }, async t => {
+test('all four experiments remain winnable with ordinary swaps on square, tall, and wide boards', { timeout: 60000 }, async t => {
   const { page, errors } = await open(t); await ready(page);
   await page.evaluate('window.ordinaryIceMove = ' + ordinaryIceMove.toString());
   const results = await page.evaluate(async () => {

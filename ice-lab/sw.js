@@ -1,6 +1,6 @@
 // Offline support: everything the game needs is cached on first visit.
 // Bump CACHE when the list of files changes.
-const CACHE = 'ice-lab-v5';
+const CACHE = 'ice-lab-v6';
 const THREE = '../vendor/three-0.160.0/';
 const JSM = THREE + 'examples/jsm/';
 const ASSETS = [
@@ -13,6 +13,7 @@ const ASSETS = [
   './board-layout.js',
   './ice.js',
   '../ice.js',
+  '../ice-layout.js',
   '../render-2d.js',
   '../render-3d.js',
   '../board-layout.js',
