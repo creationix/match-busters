@@ -76,7 +76,8 @@ export function create3DRenderer(cv, { G, SHAPES, N, extreme = false }) {
       }
       RAINBOW.setAttribute('color', new THREE.BufferAttribute(cols, 3));
     }
-    const WHITE = new THREE.MeshBasicMaterial({ color: new THREE.Color(2, 2, 2) });
+    // Line-clear arrows must stay readable without becoming a bloom light source.
+    const WHITE = new THREE.MeshBasicMaterial({ color: extreme ? new THREE.Color('#f4efff') : new THREE.Color(2, 2, 2) });
     const BLACK = new THREE.MeshStandardMaterial({ color: 0x120820, roughness: 0.2, metalness: 0.6 });
     const GOLD = new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.2, 0.5) });
     const HALOMAT = additive(0xffb347);
@@ -138,7 +139,7 @@ export function create3DRenderer(cv, { G, SHAPES, N, extreme = false }) {
           m.rotation.x = Math.sin(time * 1.1 + u.phase * 2) * 0.2;
           if (p.t === 3) m.rotation.z = Math.sin(time * 0.9 + u.phase) * 0.15;
           u.mat.emissiveIntensity = extreme
-            ? p.sp ? 0.7 + 0.5 * pulse : selected ? 0.8 : 0.25
+            ? p.sp ? 0.25 + 0.1 * pulse : selected ? 0.45 : 0.2
             : p.sp ? 0.4 + 0.35 * pulse : selected ? 0.5 : 0.16;
           if (p.sp === 'color') u.extra.rotation.z = time * 2.5;
           else if (p.sp === 'bomb') u.extra.getObjectByName('halo').scale.setScalar(1 + 0.12 * pulse);
@@ -223,7 +224,7 @@ export function create3DRenderer(cv, { G, SHAPES, N, extreme = false }) {
     const rt = new THREE.WebGLRenderTarget(size, size, { type: THREE.HalfFloatType, samples: 4 });
     composer = new EffectComposer(renderer, rt);
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(size, size), extreme ? 1.8 : 0.6, extreme ? 0.85 : 0.5, extreme ? 0.9 : 1.0);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(size, size), extreme ? 1.05 : 0.6, extreme ? 0.55 : 0.5, extreme ? 1.25 : 1.0);
     composer.addPass(bloom);
     if (extreme) {
       prismPass = new ShaderPass({

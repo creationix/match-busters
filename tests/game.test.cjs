@@ -10,9 +10,9 @@ const root = path.resolve(__dirname, '..');
 const prefix = '/match-busters/';
 let browser, server, origin, legacy = false;
 
-// An installed v5 worker and shell, for testing the update path.
+// An installed v6 worker and shell, for testing the update path.
 const legacyWorker = `
-const CACHE = 'match-busters-v5';
+const CACHE = 'match-busters-v6';
 self.addEventListener('install', e => e.waitUntil(
   caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).then(() => self.skipWaiting())
 ));
@@ -115,7 +115,7 @@ test('cold load, a match, and offline reload work under a GitHub Pages subpath',
   await play(page);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v6']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v7']);
   await context.setOffline(true);
   await page.reload();
   await play(page);
@@ -124,14 +124,14 @@ test('cold load, a match, and offline reload work under a GitHub Pages subpath',
   assert.equal(await page.locator('#loadErr').isVisible(), false);
 });
 
-test('an existing v5 installation updates and then works offline', { timeout: 60000 }, async t => {
+test('an existing v6 installation updates and then works offline', { timeout: 60000 }, async t => {
   legacy = true;
   t.after(() => { legacy = false; });
   const { context, page, external, errors } = await newPage(t);
   await page.goto(origin + prefix);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v5']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v6']);
   legacy = false;
   await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.getRegistration();
@@ -139,7 +139,7 @@ test('an existing v5 installation updates and then works offline', { timeout: 60
     await registration.update();
     await changed;
   });
-  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v6');
+  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v7');
   await context.setOffline(true);
   await page.reload();
   await play(page);
@@ -323,6 +323,16 @@ test('Extreme graphics render, persist, and switch back to the original Fancy mo
   await page.waitForFunction(() => __mb.renderer.quality === 'extreme');
   await page.evaluate(() => { __mb.save.keep3D = true; __mb.startLevel(0); });
   await page.waitForFunction(() => __mb.G.grid.flat().every(p => p.y === p.r));
+  await page.evaluate(() => {
+    // Review both line-clear directions in every shape color at peak glow.
+    __mb.setPaused(true); __mb.show(null);
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 8; c++) __mb.G.grid[r][c] = __mb.mk((r + c) % 5, r, c);
+    for (let t = 0; t < 5; t++) {
+      __mb.G.grid[t + 1][2] = __mb.mk(t, t + 1, 2, 'line', 'h');
+      __mb.G.grid[t + 1][5] = __mb.mk(t, t + 1, 5, 'line', 'v');
+    }
+    __mb.render(Math.PI / 10);
+  });
   await page.screenshot({ path: '/tmp/match-busters-extreme.png' });
   assert.equal(await page.evaluate(() => __mb.save.extreme && !__mb.save.smooth), true);
   await page.reload();
