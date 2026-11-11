@@ -28,7 +28,7 @@ On HTTPS (or localhost), the service worker caches the game and all rendering mo
 
 Fancy is the default graphics mode and keeps the original shiny 3D renderer. Extreme adds much stronger bloom, animated RGB fringes, brighter power-ups, larger particle bursts, and extra screen shake. Smooth uses the lightweight renderer described below. Choose any mode under Settings → Graphics.
 
-After startup, if 3D play stays below 30 frames per second for two consecutive two-second windows, the game pauses and offers **Use smooth graphics** or **Keep 3D**. It remembers your choice; choosing Keep 3D suppresses further offers.
+The performance check ignores the first four seconds, unfocused windows, and graphics switching. It only offers a change when at least 80% of frames are slower than 20 FPS in three consecutive three-second windows. Steady 20–30 FPS and occasional stalls do not trigger it. The game pauses and offers one step down: **Extreme → Fancy**, or **Fancy → Smooth**. Each change starts a fresh check, so Fancy gets a chance before suggesting Smooth. You can keep the current mode instead, which suppresses further offers. Choices are saved.
 
 Smooth graphics uses Canvas 2D with cached sprites and fewer particles. It does not import Three.js or create a WebGL context, and settled boards are not redrawn. Power-ups, cascades, scoring, controls, and saved progress work in both modes. Rendering stops while paused or hidden. If WebGL cannot start, the game falls back to Canvas 2D.
 

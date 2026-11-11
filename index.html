@@ -120,7 +120,7 @@
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
 </div>
 
-<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 e</div><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 f</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Match Busters</h1>
   <p class="sub">Swap. Match three. Bust them all.</p>
@@ -159,11 +159,11 @@
   <button class="big alt" id="resMenuBtn">Level Select</button>
 </div></div>
 
-<div class="screen dim" id="scrGraphics" role="dialog" aria-modal="true" aria-labelledby="graphicsTitle"><div class="card">
+<div class="screen dim" id="scrGraphics" role="dialog" aria-modal="true" aria-labelledby="graphicsTitle" aria-describedby="graphicsMessage"><div class="card">
   <h2 id="graphicsTitle">Prefer smoother play?</h2>
-  <p class="sub">The 3D effects are running slowly on this device. Smooth graphics uses simpler 2D pieces.</p>
-  <button class="big" id="useSmoothBtn">Use smooth graphics</button>
-  <button class="big alt" id="keep3DBtn">Keep 3D</button>
+  <p class="sub" id="graphicsMessage">The 3D effects are running slowly on this device. Smooth graphics uses simpler 2D pieces.</p>
+  <button class="big" id="lowerGraphicsBtn">Use smooth graphics</button>
+  <button class="big alt" id="keepGraphicsBtn">Keep Fancy</button>
 </div></div>
 
 <div id="loadErr">Couldn't start the game. Reload to try again.</div>
@@ -672,14 +672,16 @@ $('graphicsMode').onchange = () => {
   save.extreme = $('graphicsMode').value === 'extreme';
   save.keep3D = false; persist(); syncToggles(); applyGraphics();
 };
-$('useSmoothBtn').onclick = async () => {
-  $('useSmoothBtn').disabled = $('keep3DBtn').disabled = true;
-  save.smooth = true; save.extreme = false; persist(); syncToggles();
+$('lowerGraphicsBtn').onclick = async () => {
+  $('lowerGraphicsBtn').disabled = $('keepGraphicsBtn').disabled = true;
+  // Try normal 3D before suggesting the 2D renderer.
+  save.smooth = !save.extreme; save.extreme = false; save.keep3D = false;
+  persist(); syncToggles();
   await applyGraphics();
   G.paused = false; show(null);
-  $('useSmoothBtn').disabled = $('keep3DBtn').disabled = false;
+  $('lowerGraphicsBtn').disabled = $('keepGraphicsBtn').disabled = false;
 };
-$('keep3DBtn').onclick = () => { save.keep3D = true; persist(); G.paused = false; show(null); frameRate.reset(); };
+$('keepGraphicsBtn').onclick = () => { save.keep3D = true; persist(); G.paused = false; show(null); frameRate.reset(); };
 $('resetBtn').onclick = () => { if (confirm('Erase all level progress?')) { save.stars = []; persist(); } };
 window.addEventListener('keydown', e => { if (e.key === 'Escape' || e.key === 'p') setPaused(!G.paused); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && G.active && !G.paused && !G.ended) setPaused(true); });
@@ -804,10 +806,15 @@ function update(dt) {
 let last = 0;
 function frame(ts) {
   const elapsed = ts - last, dt = Math.min(0.05, elapsed / 1000); last = ts;
-  if (G.active && !G.paused && !G.ended && !document.hidden && !save.smooth && !save.keep3D) {
+  if (G.active && !G.paused && !G.ended && !document.hidden && document.hasFocus() && !$('graphicsMode').disabled && !save.smooth && !save.keep3D) {
     if (frameRate.sample(elapsed)) {
+      $('graphicsMessage').textContent = save.extreme
+        ? 'Extreme effects are running slowly on this device. Fancy keeps the shiny 3D pieces with fewer effects.'
+        : 'The 3D effects are running slowly on this device. Smooth graphics uses simpler 2D pieces.';
+      $('lowerGraphicsBtn').textContent = save.extreme ? 'Use Fancy graphics' : 'Use smooth graphics';
+      $('keepGraphicsBtn').textContent = save.extreme ? 'Keep Extreme' : 'Keep Fancy';
       G.paused = true; G.sel = null; G.drag = null; show('graphics');
-      $('useSmoothBtn').focus();
+      $('lowerGraphicsBtn').focus();
     }
   } else frameRate.reset();
   if (G.active && !G.paused && G.grid) update(dt);

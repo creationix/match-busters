@@ -10,9 +10,9 @@ const root = path.resolve(__dirname, '..');
 const prefix = '/match-busters/';
 let browser, server, origin, legacy = false;
 
-// An installed v6 worker and shell, for testing the update path.
+// An installed v7 worker and shell, for testing the update path.
 const legacyWorker = `
-const CACHE = 'match-busters-v6';
+const CACHE = 'match-busters-v7';
 self.addEventListener('install', e => e.waitUntil(
   caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).then(() => self.skipWaiting())
 ));
@@ -115,7 +115,7 @@ test('cold load, a match, and offline reload work under a GitHub Pages subpath',
   await play(page);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v7']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v8']);
   await context.setOffline(true);
   await page.reload();
   await play(page);
@@ -124,14 +124,14 @@ test('cold load, a match, and offline reload work under a GitHub Pages subpath',
   assert.equal(await page.locator('#loadErr').isVisible(), false);
 });
 
-test('an existing v6 installation updates and then works offline', { timeout: 60000 }, async t => {
+test('an existing v7 installation updates and then works offline', { timeout: 60000 }, async t => {
   legacy = true;
   t.after(() => { legacy = false; });
   const { context, page, external, errors } = await newPage(t);
   await page.goto(origin + prefix);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v6']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v7']);
   legacy = false;
   await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.getRegistration();
@@ -139,7 +139,7 @@ test('an existing v6 installation updates and then works offline', { timeout: 60
     await registration.update();
     await changed;
   });
-  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v7');
+  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v8');
   await context.setOffline(true);
   await page.reload();
   await play(page);
@@ -252,10 +252,21 @@ test('frame-rate detection ignores startup and brief stalls, and detects sustain
   assert.equal(feed(1000 / 60, 600), false);
   assert.equal(feed(100, 25), false);
   assert.equal(feed(1000 / 60, 300), false);
+  for (const fps of [30, 24, 20]) {
+    monitor.reset();
+    assert.equal(feed(1000 / fps, fps * 30), false, `Playable ${fps} FPS must not prompt`);
+  }
   monitor.reset();
-  assert.equal(feed(100, 70), true);
+  let offeredForStalls = false;
+  for (let i = 0; i < 200; i++) {
+    offeredForStalls = feed(1000 / 60, 9) || offeredForStalls;
+    offeredForStalls = monitor.sample(200) || offeredForStalls;
+  }
+  assert.equal(offeredForStalls, false);
   monitor.reset();
-  assert.equal(feed(1500, 6), true); // Even devices below one FPS must get the offer.
+  assert.equal(feed(100, 160), true);
+  monitor.reset();
+  assert.equal(feed(1500, 12), true); // Even devices below one FPS must get the offer.
 });
 
 test('3D is the default; slow play pauses for a choice and remembers either choice', { timeout: 60000 }, async t => {
@@ -286,7 +297,7 @@ test('3D is the default; slow play pauses for a choice and remembers either choi
   await page.waitForFunction(() => __mb.renderer.kind === 'webgl');
   await page.evaluate(() => __mb.startLevel(0));
   await page.getByRole('dialog', { name: 'Prefer smoother play?' }).waitFor({ state: 'visible' });
-  await page.getByRole('button', { name: 'Keep 3D', exact: true }).click();
+  await page.getByRole('button', { name: 'Keep Fancy', exact: true }).click();
   assert.equal(await page.evaluate(() => __mb.save.keep3D && !__mb.G.paused), true);
   await page.reload();
   await page.waitForFunction(() => !!window.__mb);
@@ -307,6 +318,43 @@ test('unavailable WebGL falls back to the playable 2D renderer', { timeout: 6000
   await play(page);
   assert.equal(await page.evaluate(() => __mb.renderer.kind), 'canvas');
   assert.equal(await page.evaluate(() => __mb.save.smooth), true);
+  assert.deepEqual(errors, []);
+});
+
+test('slow Extreme offers Fancy first, and only offers Smooth after a fresh check in Fancy', { timeout: 60000 }, async t => {
+  const { page, errors } = await newPage(t, { smooth: false, viewport: { width: 320, height: 640 } });
+  await page.addInitScript(() => {
+    const save = JSON.parse(localStorage.getItem('matchbusters') || '{}');
+    if (!('extreme' in save)) localStorage.setItem('matchbusters', JSON.stringify({ ...save, smooth: false, extreme: true, sound: false, music: false }));
+    const raf = window.requestAnimationFrame;
+    let timestamp = performance.now();
+    window.testFocused = true; window.testFrames = 0;
+    document.hasFocus = () => window.testFocused;
+    window.requestAnimationFrame = callback => raf.call(window, () => { timestamp += 100; window.testFrames++; callback(timestamp); });
+  });
+  await page.goto(origin + prefix);
+  await page.waitForFunction(() => !!window.__mb);
+  await page.evaluate(() => { window.testFocused = false; __mb.startLevel(0); });
+  const unfocusedStart = await page.evaluate(() => window.testFrames);
+  await page.waitForFunction(start => window.testFrames > start + 180, unfocusedStart);
+  assert.equal(await page.getByRole('dialog', { name: 'Prefer smoother play?' }).isVisible(), false);
+  await page.evaluate(() => { window.testFocused = true; __mb.startLevel(2); });
+  await page.getByRole('button', { name: 'Use Fancy graphics', exact: true }).waitFor({ state: 'visible' });
+  assert.equal(await page.getByRole('button', { name: 'Use smooth graphics', exact: true }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Keep Extreme', exact: true }).isVisible(), true);
+  const board = await page.evaluate(() => __mb.G.grid.map(row => row.map(p => p.t)));
+  await page.getByRole('button', { name: 'Use Fancy graphics', exact: true }).click();
+  await page.waitForFunction(() => __mb.renderer.quality === 'fancy' && !__mb.G.paused);
+  assert.equal(await page.getByRole('dialog', { name: 'Prefer smoother play?' }).isVisible(), false);
+  assert.deepEqual(await page.evaluate(() => __mb.G.grid.map(row => row.map(p => p.t))), board);
+  await page.reload();
+  await page.waitForFunction(() => !!window.__mb);
+  assert.equal(await page.evaluate(() => __mb.renderer.quality), 'fancy');
+  await page.evaluate(() => __mb.startLevel(0));
+  await page.getByRole('button', { name: 'Use smooth graphics', exact: true }).waitFor({ state: 'visible' });
+  assert.equal(await page.getByRole('button', { name: 'Keep Fancy', exact: true }).isVisible(), true);
+  await page.getByRole('button', { name: 'Use smooth graphics', exact: true }).click();
+  await page.waitForFunction(() => __mb.renderer.quality === 'smooth' && !__mb.G.paused);
   assert.deepEqual(errors, []);
 });
 
