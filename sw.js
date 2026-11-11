@@ -1,11 +1,14 @@
 // Offline support: everything the game needs is cached on first visit.
 // Bump CACHE when the list of files changes.
-const CACHE = 'match-busters-v5';
+const CACHE = 'match-busters-v6';
 const THREE = './vendor/three-0.160.0/';
 const JSM = THREE + 'examples/jsm/';
 const ASSETS = [
   './',
   './index.html',
+  './render-2d.js',
+  './render-3d.js',
+  './frame-rate.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

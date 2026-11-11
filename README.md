@@ -1,6 +1,6 @@
 # Match Busters
 
-A classic match-3 puzzle game that runs in the browser, rendered with Three.js.
+A classic match-3 puzzle game that runs in the browser, with shiny Three.js graphics and an optional lightweight Canvas 2D renderer.
 
 **Play it:** https://creationix.github.io/match-busters/
 
@@ -26,13 +26,17 @@ On HTTPS (or localhost), the service worker caches the game and all rendering mo
 
 ## Graphics
 
-Smooth graphics is enabled by default on touch devices. It renders at one pixel per CSS pixel, uses simpler lighting and models, skips bloom and offscreen multisampling, and reduces particles. Turn it off in Settings to restore the full effects and Retina resolution. The choice is saved with your progress. Rendering stops while paused or hidden.
+Fancy is the default graphics mode and keeps the original shiny 3D renderer. Extreme adds much stronger bloom, animated RGB fringes, brighter power-ups, larger particle bursts, and extra screen shake. Smooth uses the lightweight renderer described below. Choose any mode under Settings → Graphics.
+
+After startup, if 3D play stays below 30 frames per second for two consecutive two-second windows, the game pauses and offers **Use smooth graphics** or **Keep 3D**. It remembers your choice; choosing Keep 3D suppresses further offers.
+
+Smooth graphics uses Canvas 2D with cached sprites and fewer particles. It does not import Three.js or create a WebGL context, and settled boards are not redrawn. Power-ups, cascades, scoring, controls, and saved progress work in both modes. Rendering stops while paused or hidden. If WebGL cannot start, the game falls back to Canvas 2D.
 
 ## Vendored Three.js
 
-`vendor/three-0.160.0/` contains files from the official [`three@0.160.0` npm package](https://registry.npmjs.org/three/-/three-0.160.0.tgz): `build/three.module.js`, the six helpers imported by `index.html`, and their transitive imports. The upstream MIT license is included in that directory. The only changes to upstream files replace bare `from 'three'` imports with relative paths to `build/three.module.js`.
+`vendor/three-0.160.0/` contains files from the official [`three@0.160.0` npm package](https://registry.npmjs.org/three/-/three-0.160.0.tgz): `build/three.module.js`, the six helpers imported by `render-3d.js`, and their transitive imports. The upstream MIT license is included in that directory. The only changes to upstream files replace bare `from 'three'` imports with relative paths to `build/three.module.js`.
 
-All imports resolve directly, without import maps, so loading the engine does not require iOS 16.4 or later. When updating Three.js, copy the complete import graph from one release, rewrite bare `three` imports as relative paths to the vendored core, update the imports in `index.html` and the asset paths in `sw.js`, and bump the service worker's `CACHE` version. Keep the core and helpers on the same release.
+All imports resolve directly, without import maps, so loading the engine does not require iOS 16.4 or later. When updating Three.js, copy the complete import graph from one release, rewrite bare `three` imports as relative paths to the vendored core, update the imports in `render-3d.js` and the asset paths in `sw.js`, and bump the service worker's `CACHE` version. Keep the core and helpers on the same release.
 
 ## Tests
 
@@ -44,4 +48,4 @@ npx playwright install chromium
 npm test
 ```
 
-The tests check local module resolution and offline asset coverage, then exercise startup, a legal swap, offline reload, and migration from the previous service worker under a GitHub Pages-style subpath. They also compare rendering cost between graphics modes, check that pausing stops rendering, and verify that graphics preferences preserve progress. To run against WebKit, install it with `npx playwright install webkit` and run `TEST_BROWSER=webkit npm test`. To use an existing Chromium installation, set `CHROMIUM_PATH` to its executable.
+The tests cover local module resolution, offline assets and upgrades, swaps and resizing, power-up chains and refills, frame-rate detection, the graphics offer, mode switching, and saved progress. They also verify that smooth mode works with WebGL disabled and that settled boards are not redrawn. To run against WebKit, install it with `npx playwright install webkit` and run `TEST_BROWSER=webkit npm test`. To use an existing Chromium installation, set `CHROMIUM_PATH` to its executable.
