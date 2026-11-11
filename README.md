@@ -24,9 +24,9 @@ There are 24 campaign levels. The first sixteen retain their original score, col
 | 5–8 | Thin ice on levels 5, 7, and 8 |
 | 9–12 | Thick ice on levels 9 and 12; level 10 uses thin ice |
 | 13–16 | Mixed ice and bounded spreading frost on levels 13, 15, and 16 |
-| 17–24 | 18–28 initial ice cells on a classic board, increasing thick ice, higher targets, and spreading after 2–4 quiet moves |
+| 17–24 | 18–28 initial ice cells on a classic board, increasing thick ice, higher targets, and spreading every two to three quiet moves |
 
-Timed levels 3, 6, 11, and 14 keep their original clocks and ice-free boards. Level 13 spreads once after four moves without ice damage, up to four times. Levels 15 and 16 spread after three such moves, up to six/eight times respectively. The final stages spread after just two quiet moves, up to ten times, with as many as 28 double-frozen cells on an 8×8 board. Any chip resets the visible countdown. Thinking time, pauses, invalid swaps, and completed boards never trigger growth. Thawed cells and earned power-ups stay protected, and growth keeps the unfrozen play area connected.
+Timed levels 3, 6, 11, and 14 keep their original clocks and ice-free boards. Growth freezes one adjacent cell per spread, with a countdown that gets shorter as the levels get harder: four quiet moves on level 13, three on levels 15–18, and two on levels 19–24. Level 13 allows up to four spreads, levels 15 and 16 allow six/eight respectively, and the advanced stages allow six to ten. The final stage starts with as many as 28 double-frozen cells on an 8×8 board. Any chip resets the visible countdown. Thinking time, pauses, invalid swaps, and completed boards never trigger growth. Thawed cells and earned power-ups stay protected, and growth keeps the unfrozen play area connected.
 
 ## Frost and power-ups
 
@@ -47,7 +47,7 @@ Fancy and Extreme render ice with a lightweight bevel shader: connected cells sh
 
 ## Ice Lab playtest
 
-The separate [Ice Lab](https://creationix.github.io/match-busters/ice-lab/) keeps its four unlocked experiments and independent progress. It shares the campaign's frost helpers and renderers, so artwork fixes apply in both places. The lab initially inherits graphics and audio preferences without copying campaign stars. First Thaw teaches ordinary thawing, Crossfire offers thin ice for trying combinations, Deep Freeze adds thick ice and slow spreading, and Prism Storm adds color-bomb chains and faster spreading. Seeker pieces remain a future experiment.
+The separate [Ice Lab](https://creationix.github.io/match-busters/ice-lab/) keeps its four unlocked experiments and independent progress. It shares the campaign's frost helpers and renderers, so artwork fixes apply in both places. The lab initially inherits graphics and audio preferences without copying campaign stars. First Thaw teaches ordinary thawing, Crossfire offers thin ice for trying combinations, Deep Freeze adds thick ice and spreading every four quiet moves; Prism Storm adds color-bomb chains, spreading every two quiet moves, and a higher spread limit. Seeker pieces remain a future experiment.
 
 ## Running locally
 

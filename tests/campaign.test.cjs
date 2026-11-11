@@ -72,7 +72,7 @@ test('offline campaign uses its own shared modules even when an older lab cache 
   const{page,context,errors}=await open(t);
   await page.evaluate(()=>navigator.serviceWorker.ready);await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
   await page.evaluate(async()=>{
-    const name='match-busters-v16',own=await caches.open(name),requests=await own.keys();
+    const name='match-busters-v17',own=await caches.open(name),requests=await own.keys();
     const entries=await Promise.all(requests.map(async req=>[req,await own.match(req)]));
     const lab=await caches.open('ice-lab-stale');
     await lab.put('/match-busters/render-2d.js',new Response('throw Error("Old lab renderer must not load")',{headers:{'Content-Type':'text/javascript'}}));
@@ -141,6 +141,7 @@ test('campaign frost grows while the collection target is already met, and its H
   });
   for(let i=0;i<4;i++){
     await page.evaluate(()=>{__mb.G.grid[0][0].sp='bomb'});await move(page,{r:0,c:0},{r:0,c:0});
+    if(i===0)assert.deepEqual(await page.evaluate(()=>[__mb.G.iceTotal,__mb.G.frost.quiet]),[2,1]);
   }
   assert.deepEqual(await page.evaluate(()=>[__mb.G.iceTotal,__mb.G.frost.remaining,__mb.G.frost.quiet,__mb.G.ended]),[3,3,0,false]);
   assert.match(await page.locator('#iceProgress').textContent(),/0\/3/);

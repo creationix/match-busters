@@ -13,7 +13,8 @@ function connected(ice){
 test('eight advanced stages increase ice density, thickness, and spreading pressure',async()=>{
   const{LEVELS}=await import('../levels.js');assert.equal(LEVELS.length,24);
   const advanced=LEVELS.slice(16);assert.deepEqual(advanced.map(l=>l.ice.tiles),[18,20,22,24,24,26,27,28]);
-  assert.ok(advanced.every(l=>l.growth&&l.growth.after<=4));assert.ok(advanced.slice(-3).every(l=>l.growth.after===2));
+  assert.ok(advanced.every(l=>l.growth));
+  assert.deepEqual(LEVELS.filter(l=>l.growth).map(l=>l.growth.after),[4,3,3,3,3,2,2,2,2,2,2]);
   assert.equal(advanced[7].ice.thick,1);assert.ok(advanced.filter(l=>l.type==='score').every(l=>l.goal>10000));
 });
 test('fresh ice layouts vary by seed, scale with board area, preserve open paths, and never supply starter powers',async()=>{

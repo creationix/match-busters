@@ -169,7 +169,7 @@ test('a new player thaws the first board through ordinary swaps; saves and offli
   assert.ok(await page.evaluate(() => JSON.parse(localStorage.getItem('matchbusters-ice-lab')).stars[0] > 0));
   assert.equal(await page.evaluate(() => localStorage.getItem('matchbusters')), mainSave);
   const caches = await page.evaluate(() => window.caches.keys());
-  assert.ok(caches.includes('match-busters-v16') && caches.includes('ice-lab-v8'));
+  assert.ok(caches.includes('match-busters-v17') && caches.includes('ice-lab-v9'));
   assert.ok(!caches.includes('ice-lab-v6'));
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => !!window.__mb);
   assert.ok(await page.evaluate(() => __mb.save.stars[0] > 0));
@@ -179,6 +179,7 @@ test('a new player thaws the first board through ordinary swaps; saves and offli
 
 test('hard-board growth follows real moves, warns before spreading, resets on chips, and restarts cleanly', { timeout: 60000 }, async t => {
   const { page, errors } = await open(t); await ready(page);
+  assert.equal(await page.evaluate(() => { __mb.startLevel(2); return __mb.G.frost.after; }), 4);
   await page.evaluate(() => {
     const mb = __mb, g = mb.G; mb.startLevel(3);
     g.grid = Array.from({ length: 8 }, (_, r) => Array.from({ length: 8 }, (_, c) => mb.mk((r + c * 2) % 5, r, c)));
@@ -203,8 +204,9 @@ test('hard-board growth follows real moves, warns before spreading, resets on ch
     await page.evaluate(() => { __mb.G.grid[0][0].sp = 'bomb'; });
     await move(corner, corner);
   }
-  await quietMove(); await quietMove();
-  assert.equal(await page.evaluate(() => __mb.G.frost.quiet), 2);
+  await quietMove();
+  assert.equal(await page.evaluate(() => __mb.G.frost.quiet), 1);
+  assert.equal(await page.evaluate(() => __mb.G.iceTotal), 2);
   assert.ok(await page.locator('#iceWarning').evaluate(el => el.classList.contains('urgent')));
   await page.evaluate(() => {
     const g = __mb.G;
@@ -214,7 +216,7 @@ test('hard-board growth follows real moves, warns before spreading, resets on ch
   await move({ r: 2, c: 5 }, { r: 3, c: 5 });
   assert.equal(await page.evaluate(() => __mb.G.frost.quiet), 0);
   assert.equal(await page.evaluate(() => __mb.G.iceTotal), 2);
-  await quietMove(); await quietMove(); await quietMove();
+  await quietMove(); await quietMove();
   assert.equal(await page.evaluate(() => __mb.G.iceTotal), 3);
   assert.equal(await page.evaluate(() => __mb.G.frost.remaining), 7);
   assert.equal(await page.evaluate(() => __mb.G.frost.quiet), 0);
