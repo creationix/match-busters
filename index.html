@@ -120,7 +120,7 @@
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
 </div>
 
-<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 f</div><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 g</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Match Busters</h1>
   <p class="sub">Swap. Match three. Bust them all.</p>
@@ -174,6 +174,7 @@
 <script type="module">
 import { createCanvasRenderer } from './render-2d.js';
 import { createFrameRateMonitor } from './frame-rate.js';
+import { createMusicPlayer } from './music.js';
 
 window.__mbStarting = true;
 const N = 8, TAU = Math.PI * 2, PMAX = 2000;
@@ -213,16 +214,17 @@ try { Object.assign(save, JSON.parse(localStorage.getItem('matchbusters') || '{}
 function persist() { try { localStorage.setItem('matchbusters', JSON.stringify(save)); } catch (e) {} }
 
 // ---------- audio (all synthesised, no asset files) ----------
-let AC = null, musicGain = null, sfxGain = null, nextT = 0, step = 0;
+let AC = null, musicGain = null, sfxGain = null, musicPlayer = null, musicKind = 'menu';
 function initAudio() {
   if (!AC) {
     const C = window.AudioContext || window.webkitAudioContext;
     if (!C) return;
     AC = new C();
-    musicGain = AC.createGain(); musicGain.gain.value = save.music ? 1 : 0; musicGain.connect(AC.destination);
+    musicGain = AC.createGain(); musicGain.gain.value = 1; musicGain.connect(AC.destination);
     sfxGain = AC.createGain(); sfxGain.gain.value = 1; sfxGain.connect(AC.destination);
-    nextT = AC.currentTime + 0.1;
-    setInterval(musicTick, 100);
+    musicPlayer = createMusicPlayer(AC, musicGain);
+    musicPlayer.setCategory(musicKind); musicPlayer.setEnabled(save.music);
+    setInterval(() => musicPlayer.tick(), 100);
   }
   if (AC.state === 'suspended') AC.resume();
 }
@@ -269,17 +271,10 @@ const sfx = {
   win()    { if (on()) [523.25, 659.25, 783.99, 1046.5, 1318.5].forEach((f, i) => { tone(f, 0.35, 'triangle', 0.22, i * 0.12); tone(f / 2, 0.35, 'sine', 0.12, i * 0.12); }); },
   lose()   { if (on()) [392, 329.63, 261.63, 196].forEach((f, i) => tone(f, 0.4, 'triangle', 0.2, i * 0.2)); },
 };
-const PROG = [[220, 261.63, 329.63], [174.61, 220, 261.63], [261.63, 329.63, 392], [196, 246.94, 293.66]];
-const ARP = [0, 1, 2, 1, 0, 2, 1, 2];
-function musicTick() {
-  if (!AC || !save.music || AC.state !== 'running') return;
-  if (nextT < AC.currentTime) nextT = AC.currentTime + 0.05;
-  while (nextT < AC.currentTime + 0.3) {
-    const chord = PROG[(step >> 3) % 4], i = step % 8, when = nextT - AC.currentTime;
-    tone(chord[ARP[i]] * (i >= 4 ? 2 : 1), 0.5, 'sine', 0.035, when, null, musicGain);
-    if (i === 0) tone(chord[0] / 2, 2.3, 'triangle', 0.04, when, null, musicGain);
-    nextT += 0.3; step++;
-  }
+function setMusicCategory(kind) {
+  if (kind === 'menu' && musicKind === 'menu') return;
+  musicKind = kind;
+  if (musicPlayer) musicPlayer.setCategory(kind);
 }
 window.addEventListener('pointerdown', initAudio, true);
 window.addEventListener('keydown', initAudio, true);
@@ -551,6 +546,7 @@ function isOver() {
 function checkEnd() { if (!G.ended && !G.busy && isOver()) endLevel(goalMet()); }
 function endLevel(win) {
   G.ended = true; G.sel = null; G.drag = null; G.hint = null;
+  setMusicCategory('menu');
   const lv = G.lv; let stars = 0;
   if (win) {
     if (lv.type === 'collect') { const f = G.moves / lv.moves; stars = f >= 0.3 ? 3 : f >= 0.12 ? 2 : 1; }
@@ -631,6 +627,7 @@ function startLevel(i) {
   Object.assign(G, { active: true, paused: false, busy: false, ended: false, timeUp: false, level: i, lv, score: 0,
     moves: lv.moves || 0, timeLeft: lv.time || 0, collected: [0, 0, 0, 0, 0], sel: null, drag: null, hint: null, idle: 0,
     dying: [], parts: [], beams: [], blasts: [], flash: 0, shake: 0 });
+  setMusicCategory(lv.type);
   $('floats').innerHTML = '';
   newBoard();
   // drop the opening board in from above
@@ -646,7 +643,7 @@ function startLevel(i) {
   } else $('sGoalLbl').textContent = 'Goal';
   show(null); resize(); hud();
 }
-function quit() { flush(); G.active = false; G.grid = null; G.dying = []; G.parts = []; G.beams = []; G.blasts = []; G.sel = null; }
+function quit() { flush(); G.active = false; G.grid = null; G.dying = []; G.parts = []; G.beams = []; G.blasts = []; G.sel = null; setMusicCategory('menu'); }
 function setPaused(p) {
   if (!G.active || G.ended) return;
   if ($('scrGraphics').classList.contains('show')) return;
@@ -663,7 +660,7 @@ $('resMenuBtn').onclick = () => { quit(); show('levels'); };
 function syncToggles() {
   $('tSound').classList.toggle('on', save.sound); $('tMusic').classList.toggle('on', save.music);
   $('graphicsMode').value = save.smooth ? 'smooth' : save.extreme ? 'extreme' : 'fancy';
-  if (musicGain) musicGain.gain.value = save.music ? 1 : 0;
+  if (musicPlayer) musicPlayer.setEnabled(save.music);
 }
 $('tSound').onclick = () => { save.sound = !save.sound; persist(); syncToggles(); sfx.pop(1); };
 $('tMusic').onclick = () => { save.music = !save.music; persist(); syncToggles(); };
@@ -826,7 +823,7 @@ applyGraphics().then(() => {
   $('loadErr').style.display = 'none';
   requestAnimationFrame(frame);
   // exposed for debugging in the console
-  window.__mb = { G, save, sfx, get renderer() { return graphics; }, startLevel, quit, show, setPaused, update, render, settled, trySwap, formsMatch, findMove, findMatches, clearStep, gravity, mk };
+  window.__mb = { G, save, sfx, get renderer() { return graphics; }, get music() { return musicPlayer; }, startLevel, quit, show, setPaused, update, render, settled, trySwap, formsMatch, findMove, findMatches, clearStep, gravity, mk };
 }).catch(error => {
   window.__mbStarting = false;
   $('loadErr').style.display = 'block';

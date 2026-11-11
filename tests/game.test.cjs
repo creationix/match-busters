@@ -10,9 +10,9 @@ const root = path.resolve(__dirname, '..');
 const prefix = '/match-busters/';
 let browser, server, origin, legacy = false;
 
-// An installed v7 worker and shell, for testing the update path.
+// An installed v8 worker and shell, for testing the update path.
 const legacyWorker = `
-const CACHE = 'match-busters-v7';
+const CACHE = 'match-busters-v8';
 self.addEventListener('install', e => e.waitUntil(
   caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).then(() => self.skipWaiting())
 ));
@@ -71,7 +71,7 @@ test('all imports resolve locally and are precached without import maps', async 
     }
   }
   await checkImports(html, path.join(root, 'index.html'));
-  assert.equal(visited.size, 16);
+  assert.equal(visited.size, 17);
 });
 
 async function newPage(t, options = {}) {
@@ -115,7 +115,7 @@ test('cold load, a match, and offline reload work under a GitHub Pages subpath',
   await play(page);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v8']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v9']);
   await context.setOffline(true);
   await page.reload();
   await play(page);
@@ -124,14 +124,78 @@ test('cold load, a match, and offline reload work under a GitHub Pages subpath',
   assert.equal(await page.locator('#loadErr').isVisible(), false);
 });
 
-test('an existing v7 installation updates and then works offline', { timeout: 60000 }, async t => {
+test('level types select distinct music playlists and music toggles preserve sound settings', { timeout: 60000 }, async t => {
+  const { page, errors } = await newPage(t);
+  await page.goto(origin + prefix);
+  await page.waitForFunction(() => !!window.__mb);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.waitForFunction(() => !!__mb.music && __mb.music.state.enabled);
+  const result = await page.evaluate(() => {
+    const snapshots = [];
+    for (const level of [0, 3, 1, 4, 2, 5]) {
+      __mb.startLevel(level);
+      snapshots.push({ level, ...__mb.music.state });
+    }
+    __mb.quit(); __mb.show('settings');
+    return { snapshots, menu: __mb.music.state.category };
+  });
+  assert.deepEqual(result.snapshots.map(s => s.category), ['score', 'score', 'collect', 'collect', 'timed', 'timed']);
+  for (let i = 0; i < 6; i += 2) assert.notEqual(result.snapshots[i].title, result.snapshots[i + 1].title);
+  assert.equal(result.menu, 'menu');
+  const sound = await page.evaluate(() => __mb.save.sound);
+  await page.locator('#tMusic').click();
+  assert.equal(await page.evaluate(() => __mb.music.state.enabled), false);
+  assert.equal(await page.evaluate(() => __mb.save.sound), sound);
+  await page.reload();
+  await page.waitForFunction(() => !!window.__mb);
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  assert.equal(await page.evaluate(() => __mb.music.state.enabled), false);
+  await page.locator('#tMusic').click();
+  assert.equal(await page.evaluate(() => __mb.music.state.enabled), true);
+  assert.deepEqual(errors, []);
+});
+
+test('all nine songs render audible, unclipped audio through real Web Audio nodes', { timeout: 60000 }, async t => {
+  const { page, errors } = await newPage(t);
+  await page.goto(origin + prefix);
+  const results = await page.evaluate(async () => {
+    const { SONGS, createMusicPlayer } = await import('./music.js');
+    const Offline = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+    const results = [];
+    for (const song of SONGS) {
+      const context = new Offline(1, 22050 * 6, 22050);
+      // Schedule ahead before OfflineAudioContext starts its accelerated render.
+      const clock = { state: 'running', currentTime: 0,
+        createGain: () => context.createGain(), createOscillator: () => context.createOscillator() };
+      const player = createMusicPlayer(clock, context.destination);
+      const position = SONGS.filter(s => s.category === song.category).indexOf(song);
+      for (let i = 0; i <= position; i++) player.setCategory(song.category);
+      player.setEnabled(true);
+      for (let time = 0; time < 6; time += 0.1) player.tick(time);
+      const buffer = await context.startRendering(), samples = buffer.getChannelData(0);
+      let sum = 0, peak = 0;
+      for (const sample of samples) { sum += sample * sample; peak = Math.max(peak, Math.abs(sample)); }
+      results.push({ title: song.title, rms: Math.sqrt(sum / samples.length), peak });
+    }
+    return results;
+  });
+  assert.equal(results.length, 9);
+  for (const song of results) {
+    assert.ok(song.rms > 0.002, `Silent song: ${JSON.stringify(song)}`);
+    assert.ok(song.peak < 0.8, `Clipping song: ${JSON.stringify(song)}`);
+  }
+  assert.deepEqual(errors, []);
+  t.diagnostic(JSON.stringify(results));
+});
+
+test('an existing v8 installation updates and then works offline', { timeout: 60000 }, async t => {
   legacy = true;
   t.after(() => { legacy = false; });
   const { context, page, external, errors } = await newPage(t);
   await page.goto(origin + prefix);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v7']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v8']);
   legacy = false;
   await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.getRegistration();
@@ -139,7 +203,7 @@ test('an existing v7 installation updates and then works offline', { timeout: 60
     await registration.update();
     await changed;
   });
-  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v8');
+  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v9');
   await context.setOffline(true);
   await page.reload();
   await play(page);

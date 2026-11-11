@@ -32,6 +32,12 @@ The performance check ignores the first four seconds, unfocused windows, and gra
 
 Smooth graphics uses Canvas 2D with cached sprites and fewer particles. It does not import Three.js or create a WebGL context, and settled boards are not redrawn. Power-ups, cascades, scoring, controls, and saved progress work in both modes. Rendering stops while paused or hidden. If WebGL cannot start, the game falls back to Canvas 2D.
 
+## Music
+
+Nine original synthesized songs rotate automatically, including during long levels. Score levels use **Starlight Shuffle** (the original arpeggio, now with a contrasting middle section), **Sunbeam Steps**, and **Moonlit Mosaic**. Timed levels use the faster **Neon Sprint**, **Clockwork Dash**, and **Final Lap**, with driving bass and percussion. Collection levels use the slower **Glass Garden**, **Lantern Study**, and **Quiet Constellations**, with soft bells, spacious phrasing, and gentle harmony.
+
+Each song has a sixteen-bar arrangement, and transitions fade between tracks. Changing levels rotates that level type's playlist; menus and results return to the relaxed themes. Everything is generated locally with Web Audio and works offline. The Music setting remains independent of sound effects, and muting music stops scheduling its voices.
+
 ## Vendored Three.js
 
 `vendor/three-0.160.0/` contains files from the official [`three@0.160.0` npm package](https://registry.npmjs.org/three/-/three-0.160.0.tgz): `build/three.module.js`, the six helpers imported by `render-3d.js`, and their transitive imports. The upstream MIT license is included in that directory. The only changes to upstream files replace bare `from 'three'` imports with relative paths to `build/three.module.js`.
