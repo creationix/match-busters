@@ -169,7 +169,7 @@ test('a new player thaws the first board through ordinary swaps; saves and offli
   assert.ok(await page.evaluate(() => JSON.parse(localStorage.getItem('matchbusters-ice-lab')).stars[0] > 0));
   assert.equal(await page.evaluate(() => localStorage.getItem('matchbusters')), mainSave);
   const caches = await page.evaluate(() => window.caches.keys());
-  assert.ok(caches.includes('match-busters-v17') && caches.includes('ice-lab-v9'));
+  assert.ok(caches.includes('match-busters-v18') && caches.includes('ice-lab-v10'));
   assert.ok(!caches.includes('ice-lab-v6'));
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => !!window.__mb);
   assert.ok(await page.evaluate(() => __mb.save.stars[0] > 0));
@@ -205,8 +205,9 @@ test('hard-board growth follows real moves, warns before spreading, resets on ch
     await move(corner, corner);
   }
   await quietMove();
-  assert.equal(await page.evaluate(() => __mb.G.frost.quiet), 1);
-  assert.equal(await page.evaluate(() => __mb.G.iceTotal), 2);
+  assert.equal(await page.evaluate(() => __mb.G.frost.quiet), 0);
+  assert.equal(await page.evaluate(() => __mb.G.iceTotal), 3);
+  assert.equal(await page.evaluate(() => __mb.G.frost.remaining), 7);
   assert.ok(await page.locator('#iceWarning').evaluate(el => el.classList.contains('urgent')));
   await page.evaluate(() => {
     const g = __mb.G;
@@ -215,12 +216,14 @@ test('hard-board growth follows real moves, warns before spreading, resets on ch
   });
   await move({ r: 2, c: 5 }, { r: 3, c: 5 });
   assert.equal(await page.evaluate(() => __mb.G.frost.quiet), 0);
-  assert.equal(await page.evaluate(() => __mb.G.iceTotal), 2);
-  await quietMove(); await quietMove();
-  assert.equal(await page.evaluate(() => __mb.G.iceTotal), 3);
-  assert.equal(await page.evaluate(() => __mb.G.frost.remaining), 7);
+  assert.equal(await page.evaluate(() => __mb.G.iceTotal), 3); // Chipping prevents this turn's spread.
+  await quietMove();
+  assert.equal(await page.evaluate(() => __mb.G.iceTotal), 4);
+  await quietMove();
+  assert.equal(await page.evaluate(() => __mb.G.iceTotal), 5);
+  assert.equal(await page.evaluate(() => __mb.G.frost.remaining), 5);
   assert.equal(await page.evaluate(() => __mb.G.frost.quiet), 0);
-  assert.equal(await page.evaluate(() => __mb.G.ice.flat().filter(Boolean).length + __mb.G.thawed), 3);
+  assert.equal(await page.evaluate(() => __mb.G.ice.flat().filter(Boolean).length + __mb.G.thawed), 5);
   await page.evaluate(() => __mb.startLevel(3));
   assert.deepEqual(await page.evaluate(() => [__mb.G.frost.quiet, __mb.G.frost.remaining, __mb.G.iceTotal]), [0, 8, 16]);
   await page.evaluate(() => __mb.startLevel(0));
