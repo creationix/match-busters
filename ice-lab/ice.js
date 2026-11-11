@@ -1,12 +1,11 @@
 // Compact islands keep the outer border and a connected playable area open.
 export function createIcePlan(rows, cols, scenario) {
   const ice = Array.from({ length: rows }, () => Array(cols).fill(0));
-  const powers = new Map(), groups = [];
+  const powers = new Map();
   const addGroup = (ry, cx, width = 2, layers = 1) => {
     const r = Math.max(1, Math.min(rows - 3, Math.floor(rows * ry) - 1));
     const c = Math.max(1, Math.min(cols - width - 1, Math.floor(cols * cx) - 1));
     for (let y = r; y < r + 2; y++) for (let x = c; x < c + width; x++) ice[y][x] = layers;
-    groups.push({ r, c, width, layers });
   };
   if (scenario === 0) addGroup(0.5, 0.5, 3);
   if (scenario === 1) { addGroup(0.3, 0.3); addGroup(0.72, 0.72); }
@@ -18,16 +17,11 @@ export function createIcePlan(rows, cols, scenario) {
   const power = (r, c, sp, t = (r + c) % 5, dir = 'h') => {
     if (r >= 0 && c >= 0 && r < rows && c < cols && !ice[r][c]) powers.set(r * cols + c, { r, c, sp, t, dir });
   };
-  for (const group of groups) {
-    const { r, c, width } = group;
-    if (scenario === 0) {
-      power(r - 1, c + 1, 'bomb'); power(r + 2, c + 1, 'bomb');
-    } else {
-      power(r - 1, c, 'bomb'); power(r + 2, c + width - 1, 'bomb');
-      if (scenario === 2) { power(r - 1, c + 1, 'bomb'); power(r + 2, c, 'bomb'); }
-      if (scenario === 1) power(r - 1, c + 1, 'line');
-    }
-  }
+  // Small optional starter pairs, away from the ice. Ordinary matching must
+  // remain useful after these fall, fire, or are ignored entirely.
+  const middle = Math.floor(cols / 2) - 1;
+  if (scenario === 1) { power(rows - 1, middle, 'bomb'); power(rows - 1, middle + 1, 'line'); }
+  if (scenario === 2) { power(rows - 1, middle, 'bomb'); power(rows - 1, middle + 1, 'bomb'); }
   if (scenario === 3) {
     const c = Math.floor(cols / 2) - 1;
     power(rows - 1, c, 'color', 4); power(rows - 1, c + 1, 'bomb', 1);

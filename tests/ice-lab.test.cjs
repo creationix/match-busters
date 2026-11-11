@@ -41,6 +41,31 @@ async function tapCell(page, r, c, times = 1) {
   for (let i = 0; i < times; i++) await page.mouse.click(box.x + point.x * box.width, box.y + point.y * box.height);
 }
 
+// Rank only ordinary swaps, favoring matches that touch remaining ice.
+function ordinaryIceMove() {
+  const mb = __mb, g = mb.G;
+  let best = null;
+  for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) for (const [dr, dc] of [[0, 1], [1, 0]]) {
+    const y = r + dr, x = c + dc;
+    if (y >= g.rows || x >= g.cols || mb.frozen(r, c) || mb.frozen(y, x)) continue;
+    const a = g.grid[r][c], b = g.grid[y][x];
+    if (a.sp || b.sp) continue;
+    g.grid[r][c] = b; g.grid[y][x] = a;
+    const groups = mb.findMatches(), ice = new Set();
+    let value = 0;
+    for (const group of groups) for (const k of group.cells) {
+      const row = k / g.cols | 0, col = k % g.cols; value += 0.02;
+      for (const [dy, dx] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        if (mb.frozen(row + dy, col + dx)) ice.add((row + dy) * g.cols + col + dx);
+      }
+    }
+    value += ice.size * 10;
+    g.grid[r][c] = a; g.grid[y][x] = b;
+    if (groups.length && (!best || value > best.value)) best = { a: { r, c }, b: { r: y, c: x }, value };
+  }
+  return best;
+}
+
 test('ice islands and starter powers remain reachable on every board shape', async () => {
   const { createIcePlan } = await import('../ice-lab/ice.js');
   for (const [rows, cols] of [[8, 8], [12, 8], [8, 12], [16, 8], [8, 16]]) for (let scenario = 0; scenario < 4; scenario++) {
@@ -78,28 +103,31 @@ test('the lab precaches its complete import graph without sharing the main cache
   await imports(path.join(root, 'ice-lab/index.html')); assert.equal(seen.size, 19);
 });
 
-test('a new player can thaw the first board through real taps; lab saves and offline cache stay isolated', { timeout: 60000 }, async t => {
+test('a new player thaws the first board through ordinary swaps; saves and offline cache stay isolated', { timeout: 60000 }, async t => {
   const { context, page, errors } = await open(t);
   await page.goto(origin + '/'); await page.waitForFunction(() => !!window.__mb);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+  await page.evaluate(async () => { const old = await caches.open('ice-lab-v1'); await old.put('/ice-lab/index.html', new Response('Old lab')); });
   await ready(page);
   await page.waitForFunction(() => navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL.endsWith('/ice-lab/sw.js'));
   await page.getByRole('button', { name: 'Play', exact: true }).click();
   assert.equal(await page.locator('.lvBtn:enabled').count(), 4);
+  await page.evaluate(() => { let seed = 1001; Math.random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; }; });
   await page.locator('.lvBtn').first().click();
+  assert.equal(await page.evaluate(() => __mb.G.grid.flat().filter(p => p.sp).length), 0);
   assert.equal(await page.evaluate(() => __mb.G.iceTotal), 6);
   const ice = await page.evaluate(() => {
     const g = __mb.G; for (let r = 0; r < g.rows; r++) for (let c = 0; c < g.cols; c++) if (g.ice[r][c]) return { r, c };
   });
   await tapCell(page, ice.r, ice.c);
-  assert.equal(await page.evaluate(() => __mb.G.moves), 12);
+  assert.equal(await page.evaluate(() => __mb.G.moves), 22);
   assert.equal(await page.evaluate(() => __mb.G.sel), null);
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 22; i++) {
     if (await page.evaluate(() => __mb.G.ended)) break;
-    const bomb = await page.evaluate(() => { const p = __mb.G.grid.flat().find(p => p && p.sp === 'bomb'); return p && { r: p.r, c: p.c }; });
-    assert.ok(bomb, 'Tutorial must retain a usable bomb');
-    await tapCell(page, bomb.r, bomb.c, 2);
+    const move = await page.evaluate(ordinaryIceMove);
+    assert.ok(move, 'Tutorial retains an ordinary match');
+    await tapCell(page, move.a.r, move.a.c); await tapCell(page, move.b.r, move.b.c);
     await page.waitForFunction(() => !__mb.G.busy);
   }
   assert.equal(await page.evaluate(() => __mb.G.thawed), 6);
@@ -107,14 +135,49 @@ test('a new player can thaw the first board through real taps; lab saves and off
   assert.ok(await page.evaluate(() => JSON.parse(localStorage.getItem('matchbusters-ice-lab')).stars[0] > 0));
   assert.equal(await page.evaluate(() => localStorage.getItem('matchbusters')), mainSave);
   const caches = await page.evaluate(() => window.caches.keys());
-  assert.ok(caches.includes('match-busters-v12') && caches.includes('ice-lab-v1'));
+  assert.ok(caches.includes('match-busters-v12') && caches.includes('ice-lab-v2'));
+  assert.ok(!caches.includes('ice-lab-v1'));
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => !!window.__mb);
   assert.ok(await page.evaluate(() => __mb.save.stars[0] > 0));
   assert.equal(await page.evaluate(() => localStorage.getItem('matchbusters')), mainSave);
   assert.deepEqual(errors, []);
 });
 
-test('ordinary matches and beams cannot thaw ice; two distinct bombs crack then thaw thick ice', { timeout: 60000 }, async t => {
+test('all four experiments remain winnable after removing starter powers on square, tall, and wide boards', { timeout: 60000 }, async t => {
+  const { page, errors } = await open(t); await ready(page);
+  await page.evaluate('window.ordinaryIceMove = ' + ordinaryIceMove.toString());
+  const results = await page.evaluate(async () => {
+    const mb = __mb, g = mb.G, results = [], originalRandom = Math.random;
+    try {
+      for (const layout of ['classic', 'tall', 'wide']) for (let level = 0; level < 4; level++) for (let attempt = 0; attempt < 3; attempt++) {
+        let seed = 1001 + attempt; Math.random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
+        mb.save.boardLayout = layout; mb.startLevel(level);
+        for (const p of g.grid.flat()) p.sp = null;
+        let turns = 0;
+        while (!g.ended && turns < g.lv.moves) {
+          const move = window.ordinaryIceMove();
+          if (!move) break;
+          // Drive the real swap/cascade/goal path faster than display refresh.
+          const driving = setInterval(() => mb.update(0.1), 1);
+          try { await mb.trySwap(move.a, move.b); } finally { clearInterval(driving); }
+          turns++;
+        }
+        if (g.thawed === g.iceTotal || attempt === 2) {
+          results.push({ layout, level, turns, thawed: g.thawed, total: g.iceTotal, ended: g.ended });
+          break;
+        }
+      }
+    } finally { Math.random = originalRandom; }
+    return results;
+  });
+  for (const result of results) {
+    assert.equal(result.thawed, result.total, JSON.stringify(result));
+    assert.equal(result.ended, true, JSON.stringify(result));
+  }
+  assert.deepEqual(errors, []);
+});
+
+test('matches include anchored colors; nearby matches chip only one layer and lines can finish the thaw', async t => {
   const { page, errors } = await open(t); await ready(page);
   const result = await page.evaluate(() => {
     const mb = __mb, g = mb.G; mb.startLevel(0); mb.setPaused(true);
@@ -123,20 +186,70 @@ test('ordinary matches and beams cannot thaw ice; two distinct bombs crack then 
     g.ice[3][3] = g.iceInitial[3][3] = 2; g.thawed = 0; g.iceTotal = 1;
     const anchor = g.grid[3][3];
     g.grid[3][2].t = anchor.t = g.grid[3][4].t = 0;
-    const normalBlocked = !mb.formsMatch(g.grid, 3, 3) && !mb.findMatches().some(group => group.cells.includes(27));
-    g.grid[3][2].sp = 'bomb';
-    mb.clearStep([], [], 1, { seeds: [3 * 8 + 2] });
-    const cracked = g.ice[3][3] === 1 && g.thawed === 0 && g.grid[3][3] === anchor;
+    const matchesThrough = mb.formsMatch(g.grid, 3, 3) && mb.findMatches().some(group => group.cells.includes(27));
+    // The same thick cell touches two matched cells and is in the match itself.
+    mb.clearStep(mb.findMatches(), [], 1);
+    const crackedOnce = g.ice[3][3] === 1 && g.thawed === 0 && g.grid[3][3] === anchor;
+    mb.gravity(); const pinned = g.grid[3][3] === anchor && anchor.r === 3 && anchor.c === 3;
     g.grid[0][3].sp = 'line'; g.grid[0][3].dir = 'v';
     mb.clearStep([], [], 1, { seeds: [3] });
-    const beamProtected = g.ice[3][3] === 1 && g.grid[3][3] === anchor;
-    mb.gravity(); const pinned = g.grid[3][3] === anchor && anchor.r === 3 && anchor.c === 3;
-    g.grid[3][4].sp = 'bomb';
-    mb.clearStep([], [], 1, { seeds: [3 * 8 + 4] });
-    return { normalBlocked, cracked, beamProtected, pinned, thawed: g.thawed, layers: g.ice[3][3], keptPiece: g.grid[3][3] === anchor };
+    return { matchesThrough, crackedOnce, pinned, thawed: g.thawed, layers: g.ice[3][3], keptPiece: g.grid[3][3] === anchor };
   });
-  assert.deepEqual(result, { normalBlocked: true, cracked: true, beamProtected: true, pinned: true, thawed: 1, layers: 0, keptPiece: true });
+  assert.deepEqual(result, { matchesThrough: true, crackedOnce: true, pinned: true, thawed: 1, layers: 0, keptPiece: true });
   assert.deepEqual(errors, []);
+});
+
+test('adjacent matches thaw ice without matching its color; diagonal matches do not', async t => {
+  const { page } = await open(t); await ready(page);
+  const result = await page.evaluate(() => {
+    const mb = __mb, g = mb.G; mb.startLevel(0); mb.setPaused(true);
+    g.grid = Array.from({ length: 8 }, (_, r) => Array.from({ length: 8 }, (_, c) => mb.mk((r + c) % 5, r, c)));
+    g.ice = Array.from({ length: 8 }, () => Array(8).fill(0)); g.iceInitial = g.ice.map(row => row.slice());
+    g.ice[3][3] = g.iceInitial[3][3] = 2; g.ice[3][5] = g.iceInitial[3][5] = 1; g.thawed = 0; g.iceTotal = 2;
+    for (let c = 2; c <= 4; c++) g.grid[2][c].t = 4;
+    const groups = mb.findMatches(); mb.clearStep(groups, [], 1);
+    const adjacent = g.ice[3][3], diagonal = g.ice[3][5];
+    mb.gravity();
+    // A later separate match makes another hit, without needing any power-up.
+    for (let c = 2; c <= 4; c++) g.grid[2][c].t = 4;
+    mb.clearStep(mb.findMatches(), [], 1);
+    return { adjacent, diagonal, layers: g.ice[3][3], thawed: g.thawed };
+  });
+  assert.deepEqual(result, { adjacent: 1, diagonal: 1, layers: 0, thawed: 1 });
+});
+
+test('a power-up swapped with a normal neighbor fires at its new position, in either order', async t => {
+  const { page, errors } = await open(t); await ready(page);
+  for (const reverse of [false, true]) {
+    await page.evaluate(() => {
+      const mb = __mb, g = mb.G; mb.startLevel(0);
+      g.grid = Array.from({ length: 8 }, (_, r) => Array.from({ length: 8 }, (_, c) => mb.mk((r + c) % 5, r, c)));
+      g.ice = Array.from({ length: 8 }, () => Array(8).fill(0)); g.iceInitial = g.ice.map(row => row.slice());
+      g.ice[3][5] = g.iceInitial[3][5] = 1; g.ice[7][7] = g.iceInitial[7][7] = 2;
+      g.iceTotal = 2; g.thawed = 0; g.iceVersion++; g.grid[3][3].sp = 'bomb';
+      mb.render(0);
+    });
+    const [a, b] = reverse ? [[3, 4], [3, 3]] : [[3, 3], [3, 4]];
+    await tapCell(page, ...a); await tapCell(page, ...b);
+    await page.waitForFunction(() => !__mb.G.busy);
+    assert.equal(await page.evaluate(() => __mb.G.moves), 21);
+    assert.equal(await page.evaluate(() => __mb.G.ice[3][5]), 0);
+  }
+  assert.deepEqual(errors, []);
+});
+
+test('a color bomb uses its swapped neighbor color and can thaw matching frozen pieces', async t => {
+  const { page } = await open(t); await ready(page);
+  const result = await page.evaluate(() => {
+    const mb = __mb, g = mb.G; mb.startLevel(0); mb.setPaused(true);
+    g.grid = Array.from({ length: 8 }, (_, r) => Array.from({ length: 8 }, (_, c) => mb.mk((r + c) % 5, r, c)));
+    g.ice = Array.from({ length: 8 }, () => Array(8).fill(0)); g.iceInitial = g.ice.map(row => row.slice());
+    g.ice[4][4] = g.iceInitial[4][4] = 1; g.grid[4][4].t = 2; g.iceTotal = 1; g.thawed = 0;
+    g.grid[2][2].sp = 'color'; g.grid[2][2].t = 4;
+    mb.clearStep([], [], 1, { seeds: [18], target: 2 });
+    return { thawed: g.thawed, layers: g.ice[4][4], ownColorKept: !!g.grid[0][4], targetCleared: !g.grid[0][2] };
+  });
+  assert.deepEqual(result, { thawed: 1, layers: 0, ownColorKept: true, targetCleared: true });
 });
 
 test('all power-up pairs activate on swaps without requiring a normal match', { timeout: 60000 }, async t => {
@@ -153,7 +266,7 @@ test('all power-up pairs activate on swaps without requiring a normal match', { 
     await tapCell(page, 3, 3); await tapCell(page, 3, 4);
     await page.waitForFunction(() => !__mb.G.busy);
     assert.equal(await page.evaluate(() => __mb.G.lastCombo), kind);
-    assert.equal(await page.evaluate(() => __mb.G.moves), 11);
+    assert.equal(await page.evaluate(() => __mb.G.moves), 21);
   }
   assert.deepEqual(errors, []);
 });

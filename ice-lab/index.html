@@ -121,13 +121,13 @@
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
 </div>
 
-<div class="screen show" id="scrMenu"><div id="ver">Ice Lab · build 2026-11-11 a</div><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">Ice Lab · build 2026-11-11 b</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Ice Lab</h1>
   <p class="sub">Experimental ice and power-up combinations.</p>
   <button class="big" data-go="levels">Play</button>
   <button class="big alt" data-go="settings">Settings</button>
-  <p class="sub">Double-tap a power-up to fire it.<br>Swap two power-ups for a combo.</p>
+  <p class="sub">Match through or beside ice to chip it.<br>Swap a power-up to fire it; combine two for a combo.</p>
   <a class="link" href="../">Back to the main game</a>
 </div></div>
 
@@ -150,7 +150,7 @@
 
 <div class="screen dim" id="scrPause"><div class="card">
   <h2>Paused</h2>
-  <p class="sub">Bombs melt ice. Thick ice takes two hits.<br>Tap a special twice, or swap two specials.</p>
+  <p class="sub">Matches through or beside ice chip a layer.<br>All power-ups thaw ice. Thick ice takes two hits.<br>Swap a special to fire it, or tap it twice.</p>
   <button class="big" id="resumeBtn">Resume</button>
   <button class="big alt" id="restartBtn">Restart</button>
   <button class="big alt" id="quitBtn">Quit to Menu</button>
@@ -195,10 +195,10 @@ const SHAPES = [
   { name: 'Diamond',  plural: 'purple diamonds',  color: '#a855f7', dark: '#6420a0', light: '#e4c6ff' },
 ];
 const LEVELS = [
-  { type: 'thaw', name: 'First Thaw', scenario: 0, iceCount: 6, moves: 12, tip: 'Double-tap bombs to thaw a 3×3 area.' },
-  { type: 'thaw', name: 'Crossfire', scenario: 1, iceCount: 8, moves: 18, tip: 'Swap a bomb and a line clear for a three-wide cross.' },
-  { type: 'thaw', name: 'Deep Freeze', scenario: 2, iceCount: 12, moves: 28, tip: 'Thick ice takes two hits. Two bombs make a hot 5×5 blast.' },
-  { type: 'thaw', name: 'Prism Storm', scenario: 3, iceCount: 16, moves: 28, tip: 'Swap a color bomb and a bomb to ignite that color.' },
+  { type: 'thaw', name: 'First Thaw', scenario: 0, iceCount: 6, moves: 22, tip: 'Match through or beside ice to chip it.' },
+  { type: 'thaw', name: 'Crossfire', scenario: 1, iceCount: 8, moves: 26, tip: 'Matches and line clears thaw ice. Bomb + line makes a three-wide cross.' },
+  { type: 'thaw', name: 'Deep Freeze', scenario: 2, iceCount: 12, moves: 32, tip: 'Thick ice takes two hits. Match nearby, or combine two bombs.' },
+  { type: 'thaw', name: 'Prism Storm', scenario: 3, iceCount: 16, moves: 36, tip: 'Keep matching to thaw ice. Color bomb + bomb ignites that color.' },
 ];
 const $ = id => document.getElementById(id);
 const fmt = n => n.toLocaleString('en-US');
@@ -350,10 +350,10 @@ function newBoard() {
   } while (!hasMoves());
 }
 function lineLen(g, r, c, dr, dc) {
-  if (!g[r][c] || frozen(r, c)) return 0;
+  if (!g[r][c]) return 0;
   const t = g[r][c].t; let n = 1;
-  for (let i = 1; r + dr * i >= 0 && r + dr * i < G.rows && c + dc * i >= 0 && c + dc * i < G.cols && !frozen(r + dr * i, c + dc * i) && g[r + dr * i][c + dc * i] && g[r + dr * i][c + dc * i].t === t; i++) n++;
-  for (let i = 1; r - dr * i >= 0 && r - dr * i < G.rows && c - dc * i >= 0 && c - dc * i < G.cols && !frozen(r - dr * i, c - dc * i) && g[r - dr * i][c - dc * i] && g[r - dr * i][c - dc * i].t === t; i++) n++;
+  for (let i = 1; r + dr * i >= 0 && r + dr * i < G.rows && c + dc * i >= 0 && c + dc * i < G.cols && g[r + dr * i][c + dc * i] && g[r + dr * i][c + dc * i].t === t; i++) n++;
+  for (let i = 1; r - dr * i >= 0 && r - dr * i < G.rows && c - dc * i >= 0 && c - dc * i < G.cols && g[r - dr * i][c - dc * i] && g[r - dr * i][c - dc * i].t === t; i++) n++;
   return n;
 }
 const formsMatch = (g, r, c) => lineLen(g, r, c, 0, 1) >= 3 || lineLen(g, r, c, 1, 0) >= 3;
@@ -379,16 +379,16 @@ const hasMoves = () => !!findMove();
 function findMatches() {
   const g = G.grid, runs = [];
   for (let r = 0; r < G.rows; r++) for (let c = 0; c < G.cols;) {
-    if (!g[r][c] || frozen(r, c)) { c++; continue; }
+    if (!g[r][c]) { c++; continue; }
     const t = g[r][c].t; let e = c + 1;
-    while (e < G.cols && g[r][e] && !frozen(r, e) && g[r][e].t === t) e++;
+    while (e < G.cols && g[r][e] && g[r][e].t === t) e++;
     if (e - c >= 3) { const cells = []; for (let i = c; i < e; i++) cells.push(r * G.cols + i); runs.push({ cells, dir: 'h', t }); }
     c = e;
   }
   for (let c = 0; c < G.cols; c++) for (let r = 0; r < G.rows;) {
-    if (!g[r][c] || frozen(r, c)) { r++; continue; }
+    if (!g[r][c]) { r++; continue; }
     const t = g[r][c].t; let e = r + 1;
-    while (e < G.rows && g[e][c] && !frozen(e, c) && g[e][c].t === t) e++;
+    while (e < G.rows && g[e][c] && g[e][c].t === t) e++;
     if (e - r >= 3) { const cells = []; for (let i = r; i < e; i++) cells.push(i * G.cols + c); runs.push({ cells, dir: 'v', t }); }
     r = e;
   }
@@ -464,9 +464,22 @@ function clearStep(groups, swapped, combo, trigger = null) {
     burst(c - (G.cols - 1) / 2, (G.rows - 1) / 2 - r, '#ffb347', radius === 2 ? 55 : 30, 6);
     fired.bomb = true; G.shake = Math.max(G.shake, radius === 2 ? 1 : 0.6);
   };
+  // A match chips each touching ice cell once, even at a T/L intersection.
+  const matchIce = new Set();
+  for (const group of groups) for (const k of group.cells) {
+    const r = k / G.cols | 0, c = k % G.cols;
+    for (const [dr, dc] of [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      if (frozen(r + dr, c + dc)) matchIce.add((r + dr) * G.cols + c + dc);
+    }
+  }
+  for (const k of matchIce) hit(k / G.cols | 0, k % G.cols, 1);
   for (const group of groups) {
     for (const k of group.cells) add(k / G.cols | 0, k % G.cols);
-    if (group.special) spawns.push({ k: pickSpawn(group, swapped), t: group.t, sp: group.special, dir: group.dir });
+    if (group.special) {
+      let k = pickSpawn(group, swapped);
+      if (frozen(k / G.cols | 0, k % G.cols)) k = group.cells.find(key => !frozen(key / G.cols | 0, key % G.cols));
+      if (k !== undefined) spawns.push({ k, t: group.t, sp: group.special, dir: group.dir });
+    }
   }
   let suppressed = new Set();
   if (trigger) {
@@ -484,10 +497,10 @@ function clearStep(groups, swapped, combo, trigger = null) {
           if (c + d >= 0 && c + d < G.cols) for (let row = 0; row < G.rows; row++) cells.add(row * G.cols + c + d);
           G.beams.push({ r: r + d, c, dir: 'h', life: 1, color: '#ffe5a0' }, { r, c: c + d, dir: 'v', life: 1, color: '#ffe5a0' });
         }
-        for (const k of cells) hit(k / G.cols | 0, k % G.cols, radius ? 1 : 0);
+        for (const k of cells) hit(k / G.cols | 0, k % G.cols, 1);
         fired.line = true; fired.bomb = radius > 0; G.shake = 0.8;
       } else if (combination.kind === 'all') {
-        for (let row = 0; row < G.rows; row++) for (let col = 0; col < G.cols; col++) add(row, col);
+        for (let row = 0; row < G.rows; row++) for (let col = 0; col < G.cols; col++) hit(row, col, 1);
         fired.color = true; G.flash = 0.6; G.flashColor = '#c5b5ff';
       } else {
         suppressed = new Set([trigger.colorKey]);
@@ -505,11 +518,12 @@ function clearStep(groups, swapped, combo, trigger = null) {
     if (!piece.sp || suppressed.has(k)) continue;
     bonus += 50; fired[piece.sp] = true;
     if (piece.sp === 'line') {
-      for (let i = 0; i < (piece.dir === 'h' ? G.cols : G.rows); i++) piece.dir === 'h' ? hit(r, i, 0) : hit(i, c, 0);
+      for (let i = 0; i < (piece.dir === 'h' ? G.cols : G.rows); i++) piece.dir === 'h' ? hit(r, i, 1) : hit(i, c, 1);
       G.beams.push({ r, c, dir: piece.dir, life: 1, color: SHAPES[piece.t].light });
     } else if (piece.sp === 'bomb') blast(r, c);
     else {
-      for (let row = 0; row < G.rows; row++) for (let col = 0; col < G.cols; col++) if (G.grid[row][col] && G.grid[row][col].t === piece.t) add(row, col);
+      const target = trigger && trigger.target !== undefined && trigger.seeds.includes(k) ? trigger.target : piece.t;
+      for (let row = 0; row < G.rows; row++) for (let col = 0; col < G.cols; col++) if (G.grid[row][col] && G.grid[row][col].t === target) hit(row, col, 1);
       G.flash = 0.6; G.flashColor = SHAPES[piece.t].color;
     }
   }
@@ -588,6 +602,8 @@ async function trySwap(a, b) {
   const combination = same ? null : specialCombo(first, second);
   let trigger = same ? { seeds: [aKey] } : combination ? {
     seeds: [aKey, bKey], combination, center: bKey, colorKey: first.sp === 'color' ? bKey : aKey,
+  } : first.sp || second.sp ? {
+    seeds: [first.sp ? bKey : aKey], target: first.sp === 'color' ? second.t : second.sp === 'color' ? first.t : undefined,
   } : null;
   G.busy = true; G.hint = null; G.idle = 0;
   if (!same) swapCells(a, b);
@@ -812,7 +828,7 @@ function bindBoardInput() {
   cv.addEventListener('pointerdown', e => {
     if (!canInput()) return;
     const cell = cellAt(e); if (!cell) return;
-    if (frozen(cell.r, cell.c)) { G.sel = null; G.drag = null; sfx.bad(); toast('Bombs thaw ice'); return; }
+    if (frozen(cell.r, cell.c)) { G.sel = null; G.drag = null; sfx.bad(); toast('Match through or beside ice'); return; }
     G.idle = 0; G.hint = null;
     const s = G.sel;
     if (s && s.r === cell.r && s.c === cell.c && G.grid[cell.r][cell.c].sp) { G.sel = null; G.drag = null; trySwap(cell, cell); return; }
