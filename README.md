@@ -4,6 +4,23 @@ A classic match-3 puzzle game that runs in the browser, with shiny Three.js grap
 
 **Play it:** https://creationix.github.io/match-busters/
 
+## Ice Lab playtest
+
+Try the separate [Ice Lab prototype](https://creationix.github.io/match-busters/ice-lab/). Its four experiments are unlocked from the start and use their own progress and offline cache. The main game's levels and progress are unchanged; the lab initially inherits your graphics and audio preferences.
+
+Frozen pieces stay anchored and cannot swap or form matches. Bombs thaw a 3×3 area; thick ice takes two blasts. Double-tap any power-up to fire it, or swap adjacent power-ups to combine them:
+
+| Pair | Effect |
+| --- | --- |
+| Bomb + bomb | Hot 5×5 blast, melting both ice layers |
+| Bomb + line | Three rows and three columns; one ice hit per cell |
+| Line + line | Cross clear; ice remains frozen |
+| Color bomb + bomb | Pieces of the partner's color become bombs and detonate |
+| Color bomb + line | Pieces of the partner's color become line clears |
+| Color bomb + color bomb | Clear unfrozen pieces, triggering their power-ups |
+
+First Thaw introduces bomb activation, Crossfire teaches combinations, Deep Freeze introduces thick ice, and Prism Storm provides a color-bomb chain. This spike focuses on these mechanics; spreading ice and seeker pieces are future experiments.
+
 ## How to play
 
 Drag a piece onto a neighbour (or tap two neighbours) to swap them. Line up three or more of the same shape to clear them. Each shape always has the same colour.
