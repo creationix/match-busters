@@ -119,7 +119,7 @@
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
 </div>
 
-<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 b</div><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 c</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Match Busters</h1>
   <p class="sub">Swap. Match three. Bust them all.</p>
@@ -190,6 +190,14 @@ const LEVELS = [
   { type: 'timed',   goal: 3500, time: 90 },
   { type: 'collect', shape: 3, count: 45, moves: 25 },
   { type: 'score',   goal: 4500, moves: 28 },
+  { type: 'score',   goal: 6000, moves: 32 },
+  { type: 'collect', shape: 2, count: 55, moves: 28 },
+  { type: 'timed',   goal: 5000, time: 90 },
+  { type: 'score',   goal: 7500, moves: 36 },
+  { type: 'collect', shape: 1, count: 70, moves: 30 },
+  { type: 'timed',   goal: 6500, time: 105 },
+  { type: 'collect', shape: 3, count: 80, moves: 32 },
+  { type: 'score',   goal: 10000, moves: 40 },
 ];
 const $ = id => document.getElementById(id);
 const fmt = n => n.toLocaleString('en-US');

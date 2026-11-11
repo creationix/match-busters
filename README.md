@@ -16,7 +16,7 @@ Drag a piece onto a neighbour (or tap two neighbours) to swap them. Line up thre
 
 Power-ups fire when they are matched or caught in another blast. Cascades multiply your score.
 
-There are eight levels with three kinds of goal: reach a score in a set number of moves, reach a score against the clock, or collect a number of one shape.
+There are sixteen levels with three kinds of goal: reach a score in a set number of moves, reach a score against the clock, or collect a number of one shape. Levels 9–16 raise the targets and introduce collection goals for blue doughnuts and red squares.
 
 ## Running locally
 
