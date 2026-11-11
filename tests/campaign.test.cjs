@@ -72,7 +72,7 @@ test('offline campaign uses its own shared modules even when an older lab cache 
   const{page,context,errors}=await open(t);
   await page.evaluate(()=>navigator.serviceWorker.ready);await page.waitForFunction(()=>!!navigator.serviceWorker.controller);
   await page.evaluate(async()=>{
-    const name='match-busters-v15',own=await caches.open(name),requests=await own.keys();
+    const name='match-busters-v16',own=await caches.open(name),requests=await own.keys();
     const entries=await Promise.all(requests.map(async req=>[req,await own.match(req)]));
     const lab=await caches.open('ice-lab-stale');
     await lab.put('/match-busters/render-2d.js',new Response('throw Error("Old lab renderer must not load")',{headers:{'Content-Type':'text/javascript'}}));
@@ -202,5 +202,59 @@ test('new campaigns load random ice even alongside an older cached ice API',asyn
   assert.equal(await page.evaluate(()=>__mb.G.grid.flat().filter(p=>p.sp).length),0);
   await page.goto(origin+prefix+'ice-lab/');await page.waitForFunction(()=>window.__mb);
   await page.evaluate(()=>__mb.startLevel(0));assert.equal(await page.evaluate(()=>__mb.G.iceTotal),6);
+  assert.deepEqual(errors,[]);
+});
+
+for(const mode of ['fancy','extreme'])test(`${mode} ice stays visible through board resizing, retries, cracking, thawing, and growth`,{timeout:60000},async t=>{
+  const{page,errors}=await open(t,{viewport:{width:1280,height:850},hasTouch:false});
+  await page.evaluate(()=>__mb.show('settings'));
+  await page.selectOption('#graphicsMode',mode);
+  await page.waitForFunction(mode=>__mb.renderer.quality===mode,mode);
+  const results=await page.evaluate(()=>{
+    const m=__mb,g=m.G,engine=m.renderer.engine,results=[];
+    function check(label){
+      const gl=engine.getContext(),w=gl.drawingBufferWidth,h=gl.drawingBufferHeight;
+      function pixels(){
+        m.render(0);const data=new Uint8Array(w*h*4);
+        gl.readPixels(0,0,w,h,gl.RGBA,gl.UNSIGNED_BYTE,data);return data;
+      }
+      const visible=pixels(),error=gl.getError(),thawed=g.thawed;
+      // Hide only the ice pass: keep frozen pieces, lighting, and camera identical.
+      g.thawed=g.iceTotal;const hidden=pixels();g.thawed=thawed;
+      let frozen=0,missing=0,ghosts=0;
+      for(let r=1;r<g.rows-1;r++)for(let c=1;c<g.cols-1;c++){
+        const point=m.renderer.project(c,r),x=Math.round(point.x*w),y=Math.round((1-point.y)*h);let delta=0;
+        for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)for(let ch=0;ch<3;ch++){
+          const i=((y+dy)*w+x+dx)*4+ch;delta+=Math.abs(visible[i]-hidden[i]);
+        }
+        delta/=25;
+        if(g.ice[r][c]){frozen++;if(delta<5)missing++;}
+        else if(delta>5)ghosts++;
+      }
+      results.push({label,error,frozen,missing,ghosts,sameRenderer:m.renderer.engine===engine,textures:engine.info.memory.textures});
+    }
+    for(const layout of ['classic','wide','tall','wide','classic','classic']){
+      m.save.boardLayout=layout;m.startLevel(23);m.setPaused(true);m.show(null);
+      g.grid=Array.from({length:g.rows},(_,r)=>Array.from({length:g.cols},(_,c)=>m.mk((r+c)%5,r,c)));
+      g.grid.flat().forEach(p=>{p.born=1;p.x=p.c;p.y=p.r});g.shake=0;
+      g.ice=g.grid.map((row,r)=>row.map((_,c)=>r>0&&r<g.rows-1&&c>0&&c<g.cols-1&&(r+c)%2===0?2:0));
+      g.iceInitial=g.ice.map(row=>row.slice());g.iceTotal=g.ice.flat().filter(Boolean).length;g.thawed=0;g.iceVersion++;
+      check(layout+' thick');
+      // Change the field without changing its dimensions, including newly grown thin ice.
+      for(let r=1;r<g.rows-1;r++)for(let c=1;c<g.cols-1;c++){
+        if(g.ice[r][c]){g.ice[r][c]=r%2?1:0;if(!g.ice[r][c])g.thawed++;}
+      }
+      g.ice[2][3]=g.iceInitial[2][3]=1;g.iceTotal++;g.iceVersion++;
+      check(layout+' cracked/thawed/grown');
+    }
+    return results;
+  });
+  for(const result of results){
+    assert.equal(result.error,0,JSON.stringify(result));assert.ok(result.frozen>0);
+    assert.equal(result.missing,0,JSON.stringify(result));
+    // Extreme's bloom deliberately spills light beyond the ice contour.
+    if(mode==='fancy')assert.equal(result.ghosts,0,JSON.stringify(result));
+    assert.ok(result.sameRenderer);assert.equal(result.textures,results[0].textures,'replaced ice textures must be disposed');
+  }
   assert.deepEqual(errors,[]);
 });

@@ -169,7 +169,7 @@ test('a new player thaws the first board through ordinary swaps; saves and offli
   assert.ok(await page.evaluate(() => JSON.parse(localStorage.getItem('matchbusters-ice-lab')).stars[0] > 0));
   assert.equal(await page.evaluate(() => localStorage.getItem('matchbusters')), mainSave);
   const caches = await page.evaluate(() => window.caches.keys());
-  assert.ok(caches.includes('match-busters-v15') && caches.includes('ice-lab-v7'));
+  assert.ok(caches.includes('match-busters-v16') && caches.includes('ice-lab-v8'));
   assert.ok(!caches.includes('ice-lab-v6'));
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => !!window.__mb);
   assert.ok(await page.evaluate(() => __mb.save.stars[0] > 0));

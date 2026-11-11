@@ -53,8 +53,12 @@ export function create3DRenderer(cv, { G, SHAPES, extreme = false }) {
     const selTex = canvasTex(c => { c.strokeStyle = '#fff'; c.lineWidth = 9; c.fillStyle = 'rgba(255,255,255,.18)'; c.beginPath(); c.roundRect ? c.roundRect(8, 8, 112, 112, 22) : c.rect(8, 8, 112, 112); c.fill(); c.stroke(); });
     const additive = (color, map) => new THREE.MeshBasicMaterial({ color, map: map || null, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
     const PLANE = new THREE.PlaneGeometry(1, 1), RINGFX = new THREE.RingGeometry(0.72, 1, 48);
-    const iceField = new THREE.DataTexture(new Uint8Array(4),1,1,THREE.RGBAFormat);
-    iceField.minFilter = iceField.magFilter = THREE.LinearFilter; iceField.generateMipmaps = false;
+    function createIceField(data, width, height) {
+      const texture = new THREE.DataTexture(data,width,height,THREE.RGBAFormat);
+      texture.minFilter = texture.magFilter = THREE.LinearFilter; texture.generateMipmaps = false;
+      return texture;
+    }
+    let iceField = createIceField(new Uint8Array(4),1,1);
     let lastIceSurface = null;
     const iceMaterial = new THREE.ShaderMaterial({
       uniforms: { field: { value: iceField }, fieldTexel: { value: new THREE.Vector2(1,1) }, boardSize: { value: new THREE.Vector2(8,8) }, resolution: { value: 40 } },
@@ -178,7 +182,16 @@ export function create3DRenderer(cv, { G, SHAPES, extreme = false }) {
       if (G.ice && G.ice.length && G.iceTotal > G.thawed) {
         const surface = getIceSurface(G); iceMesh.visible = surface.visible;
         if (surface !== lastIceSurface) {
-          lastIceSurface = surface; iceField.image = { data: surface.data, width: surface.width, height: surface.height }; iceField.needsUpdate = true;
+          lastIceSurface = surface;
+          // WebGL2 texture storage cannot be resized. A new board shape needs a
+          // new texture; otherwise uploads fail and stale ice hides frozen cells.
+          if (iceField.image.width !== surface.width || iceField.image.height !== surface.height) {
+            const previous = iceField;
+            iceField = createIceField(surface.data,surface.width,surface.height);
+            iceMaterial.uniforms.field.value = iceField;
+            previous.dispose();
+          } else iceField.image.data = surface.data;
+          iceField.needsUpdate = true;
           iceMaterial.uniforms.fieldTexel.value.set(1/surface.width,1/surface.height);
           iceMaterial.uniforms.boardSize.value.set(cols,rows); iceMaterial.uniforms.resolution.value = surface.unit;
           iceMesh.scale.set(cols,rows,1);
