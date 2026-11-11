@@ -20,4 +20,24 @@ There are eight levels with three kinds of goal: reach a score in a set number o
 
 ## Running locally
 
-It is a single file, `index.html`, with no build step. Serve the folder with any static web server and open it. Three.js loads from a CDN, so an internet connection is needed. Sound and music are synthesised with the Web Audio API.
+There is no build step. Serve the folder with any static web server and open it. Three.js and its rendering helpers are vendored in `vendor/three-0.160.0/`, so the game makes no CDN requests. Sound and music are synthesised with the Web Audio API.
+
+On HTTPS (or localhost), the service worker caches the game and all rendering modules on the first visit. Once installation finishes, it can be reopened offline.
+
+## Vendored Three.js
+
+`vendor/three-0.160.0/` contains files from the official [`three@0.160.0` npm package](https://registry.npmjs.org/three/-/three-0.160.0.tgz): `build/three.module.js`, the six helpers imported by `index.html`, and their transitive imports. The upstream MIT license is included in that directory. The only changes to upstream files replace bare `from 'three'` imports with relative paths to `build/three.module.js`.
+
+All imports resolve directly, without import maps, so loading the engine does not require iOS 16.4 or later. When updating Three.js, copy the complete import graph from one release, rewrite bare `three` imports as relative paths to the vendored core, update the imports in `index.html` and the asset paths in `sw.js`, and bump the service worker's `CACHE` version. Keep the core and helpers on the same release.
+
+## Tests
+
+Only the tests need Node.js and Playwright; playing the game requires no package installation.
+
+```sh
+npm ci
+npx playwright install chromium
+npm test
+```
+
+The tests check local module resolution and offline asset coverage, then exercise startup, a legal swap, offline reload, and migration from the previous service worker under a GitHub Pages-style subpath. To run against WebKit, install it with `npx playwright install webkit` and run `TEST_BROWSER=webkit npm test`. To use an existing Chromium installation, set `CHROMIUM_PATH` to its executable.

@@ -100,12 +100,6 @@
   .link { background: none; border: 0; color: var(--muted); text-decoration: underline; cursor: pointer; font-size: 13px; }
   #loadErr { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 99; background: #9c1c1c; color: #fff; padding: 12px; text-align: center; }
 </style>
-<script type="importmap">
-{ "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
-} }
-</script>
 </head>
 <body>
 
@@ -125,7 +119,7 @@
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
 </div>
 
-<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-10 c</div><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 a</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Match Busters</h1>
   <p class="sub">Swap. Match three. Bust them all.</p>
@@ -163,19 +157,19 @@
   <button class="big alt" id="resMenuBtn">Level Select</button>
 </div></div>
 
-<div id="loadErr">Couldn't load the 3D engine (Three.js). Check your internet connection and reload.</div>
+<div id="loadErr">Couldn't start the game. Reload to try again.</div>
 <script>
   window.addEventListener('load', function () { setTimeout(function () { if (!window.__mb) document.getElementById('loadErr').style.display = 'block'; }, 4000); });
 </script>
 
 <script type="module">
-import * as THREE from 'three';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import * as THREE from './vendor/three-0.160.0/build/three.module.js';
+import { EffectComposer } from './vendor/three-0.160.0/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from './vendor/three-0.160.0/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from './vendor/three-0.160.0/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from './vendor/three-0.160.0/examples/jsm/postprocessing/OutputPass.js';
+import { RoomEnvironment } from './vendor/three-0.160.0/examples/jsm/environments/RoomEnvironment.js';
+import { RoundedBoxGeometry } from './vendor/three-0.160.0/examples/jsm/geometries/RoundedBoxGeometry.js';
 
 const N = 8, TAU = Math.PI * 2;
 // One shape = one colour, always.

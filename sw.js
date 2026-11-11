@@ -1,8 +1,8 @@
 // Offline support: everything the game needs is cached on first visit.
 // Bump CACHE when the list of files changes.
-const CACHE = 'match-busters-v2';
-const CDN = 'https://cdn.jsdelivr.net/npm/three@0.160.0/';
-const JSM = CDN + 'examples/jsm/';
+const CACHE = 'match-busters-v3';
+const THREE = './vendor/three-0.160.0/';
+const JSM = THREE + 'examples/jsm/';
 const ASSETS = [
   './',
   './index.html',
@@ -10,7 +10,7 @@ const ASSETS = [
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/apple-touch-icon.png',
-  CDN + 'build/three.module.js',
+  THREE + 'build/three.module.js',
   JSM + 'postprocessing/EffectComposer.js',
   JSM + 'postprocessing/RenderPass.js',
   JSM + 'postprocessing/UnrealBloomPass.js',
@@ -50,14 +50,6 @@ self.addEventListener('fetch', e => {
           return res;
         })
         .catch(() => caches.match(req, { ignoreSearch: true }).then(hit => hit || (req.mode === 'navigate' ? caches.match('./index.html') : Response.error())))
-    );
-  } else {
-    // Version-pinned CDN files never change: cache first.
-    e.respondWith(
-      caches.match(req).then(hit => hit || fetch(req).then(res => {
-        if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
-        return res;
-      }))
     );
   }
 });
