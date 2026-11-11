@@ -35,6 +35,9 @@
   #hudTop { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   #hudTop .title { flex: 1; min-width: 0; }
   #lvName { font-weight: 800; font-size: 17px; }
+  #iceProgress, #iceWarning { color: #9edbf6; font-size: 12px; line-height: 1.25; min-height: 1.25em; margin-top: 3px; }
+  #iceProgress.done { color: #b4f8c2; }
+  #iceWarning.urgent { color: var(--accent); }
   #lvGoal { color: var(--muted); font-size: 13px; line-height: 1.25; }
   .iconBtn { width: 42px; height: 42px; border-radius: 12px; border: 0; background: var(--panel2); color: var(--text); font-size: 18px; cursor: pointer; }
   .iconBtn:hover { filter: brightness(1.2); }
@@ -52,6 +55,7 @@
   @media (orientation: landscape) {
     #game { flex-direction: row; align-items: center; justify-content: center; gap: 14px; }
     #hud { width: clamp(168px, 20vw, 240px); flex: none; }
+    #iceWarning { min-height: 2.5em; }
     #stats { grid-template-columns: 1fr; gap: 6px; }
     .stat { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; }
     #boardWrap { flex: 1; width: 0; height: 100%; }
@@ -109,7 +113,7 @@
   <div id="hud">
     <div id="hudTop">
       <button class="iconBtn" id="pauseBtn" title="Pause (Esc)">&#10074;&#10074;</button>
-      <div class="title"><div id="lvName">Level 1</div><div id="lvGoal"></div></div>
+      <div class="title"><div id="lvName">Level 1</div><div id="lvGoal"></div><div id="iceProgress" hidden></div><div id="iceWarning" hidden aria-live="polite"></div></div>
     </div>
     <div id="stats">
       <div class="stat" id="sScoreBox"><div class="lbl">Score</div><div class="val" id="sScore">0</div></div>
@@ -121,7 +125,7 @@
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
 </div>
 
-<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 j</div><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 k</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Match Busters</h1>
   <p class="sub">Swap. Match three. Bust them all.</p>
@@ -148,6 +152,7 @@
 
 <div class="screen dim" id="scrPause"><div class="card">
   <h2>Paused</h2>
+  <p class="sub">Swap a power-up to fire it, or tap it twice.<br>Swap two power-ups for a combo.<br>Match through or beside ice to chip it. Thick ice takes two hits.<br>Clear all ice as well as the level goal. Chipping ice holds back its spread.</p>
   <button class="big" id="resumeBtn">Resume</button>
   <button class="big alt" id="restartBtn">Restart</button>
   <button class="big alt" id="quitBtn">Quit to Menu</button>
@@ -179,6 +184,7 @@ import { createCanvasRenderer } from './render-2d.js';
 import { createFrameRateMonitor } from './frame-rate.js';
 import { createMusicPlayer } from './music.js';
 import { chooseBoardShape, fitBoard } from './board-layout.js';
+import { createIcePlan, createFrostGrowth, advanceFrost } from './ice.js';
 
 window.__mbStarting = true;
 const TAU = Math.PI * 2, PMAX = 2000;
@@ -195,18 +201,18 @@ const LEVELS = [
   { type: 'collect', shape: 0, count: 25, moves: 18 },
   { type: 'timed',   goal: 2000, time: 60 },
   { type: 'score',   goal: 2800, moves: 24 },
-  { type: 'collect', shape: 4, count: 35, moves: 22 },
+  { type: 'collect', shape: 4, count: 35, moves: 26, ice: 0 },
   { type: 'timed',   goal: 3500, time: 90 },
-  { type: 'collect', shape: 3, count: 45, moves: 25 },
-  { type: 'score',   goal: 4500, moves: 28 },
-  { type: 'score',   goal: 6000, moves: 32 },
-  { type: 'collect', shape: 2, count: 55, moves: 28 },
+  { type: 'collect', shape: 3, count: 45, moves: 29, ice: 1 },
+  { type: 'score',   goal: 4500, moves: 32, ice: 1 },
+  { type: 'score',   goal: 6000, moves: 36, ice: 2 },
+  { type: 'collect', shape: 2, count: 55, moves: 32, ice: 0 },
   { type: 'timed',   goal: 5000, time: 90 },
-  { type: 'score',   goal: 7500, moves: 36 },
-  { type: 'collect', shape: 1, count: 70, moves: 30 },
+  { type: 'score',   goal: 7500, moves: 40, ice: 2 },
+  { type: 'collect', shape: 1, count: 70, moves: 36, ice: 3, growth: { after: 4, limit: 4 } },
   { type: 'timed',   goal: 6500, time: 105 },
-  { type: 'collect', shape: 3, count: 80, moves: 32 },
-  { type: 'score',   goal: 10000, moves: 40 },
+  { type: 'collect', shape: 3, count: 80, moves: 40, ice: 3, growth: { after: 3, limit: 6 } },
+  { type: 'score',   goal: 10000, moves: 48, ice: 3, growth: { after: 3, limit: 8 } },
 ];
 const $ = id => document.getElementById(id);
 const fmt = n => n.toLocaleString('en-US');
@@ -329,11 +335,12 @@ function iconCanvas(t, px) {
 // ---------- game state ----------
 let cv = $('board');
 let cellSize = 400 / 8;
-const G = { active: false, paused: false, busy: false, ended: false, timeUp: false, gen: 0, grid: null, rows: 8, cols: 8, level: 0, lv: null,
+const G = { active: false, paused: false, busy: false, ended: false, timeUp: false, gen: 0, grid: null, frost: null, ice: [], iceInitial: [], iceVersion: 0, thawed: 0, iceTotal: 0, rows: 8, cols: 8, level: 0, lv: null,
   score: 0, moves: 0, timeLeft: 0, collected: [0, 0, 0, 0, 0], sel: null, drag: null, hint: null, idle: 0,
   dying: [], parts: [], beams: [], blasts: [], timers: [], waiters: [], flash: 0, flashColor: '#ffffff', shake: 0 };
 
 const rnd = n => Math.floor(Math.random() * n);
+const frozen = (r, c) => !!(G.ice[r] && G.ice[r][c]);
 function mk(t, r, c, sp, dir) { return { t, r, c, x: c, y: r, v: 0, sp: sp || null, dir: dir || null, born: 1, mesh: null }; }
 
 function wouldMatch(g, r, c, t) {
@@ -353,9 +360,10 @@ function newBoard() {
   } while (!hasMoves());
 }
 function lineLen(g, r, c, dr, dc) {
+  if (!g[r][c]) return 0;
   const t = g[r][c].t; let n = 1;
-  for (let i = 1; r + dr * i >= 0 && r + dr * i < G.rows && c + dc * i >= 0 && c + dc * i < G.cols && g[r + dr * i][c + dc * i].t === t; i++) n++;
-  for (let i = 1; r - dr * i >= 0 && r - dr * i < G.rows && c - dc * i >= 0 && c - dc * i < G.cols && g[r - dr * i][c - dc * i].t === t; i++) n++;
+  for (let i = 1; r + dr * i >= 0 && r + dr * i < G.rows && c + dc * i >= 0 && c + dc * i < G.cols && g[r + dr * i][c + dc * i] && g[r + dr * i][c + dc * i].t === t; i++) n++;
+  for (let i = 1; r - dr * i >= 0 && r - dr * i < G.rows && c - dc * i >= 0 && c - dc * i < G.cols && g[r - dr * i][c - dc * i] && g[r - dr * i][c - dc * i].t === t; i++) n++;
   return n;
 }
 const formsMatch = (g, r, c) => lineLen(g, r, c, 0, 1) >= 3 || lineLen(g, r, c, 1, 0) >= 3;
@@ -366,26 +374,31 @@ function findMove() {
       const r2 = r + dr, c2 = c + dc;
       if (r2 >= G.rows || c2 >= G.cols) continue;
       const a = g[r][c], b = g[r2][c2];
+      if (!a || !b || frozen(r, c) || frozen(r2, c2)) continue;
+      if (a.sp && b.sp) return [{ r, c }, { r: r2, c: c2 }];
       g[r][c] = b; g[r2][c2] = a;
       const ok = formsMatch(g, r, c) || formsMatch(g, r2, c2);
       g[r][c] = a; g[r2][c2] = b;
       if (ok) return [{ r, c }, { r: r2, c: c2 }];
     }
   }
+  for (const row of g) for (const p of row) if (p && p.sp && !frozen(p.r, p.c)) return [{ r: p.r, c: p.c }, { r: p.r, c: p.c }];
   return null;
 }
 const hasMoves = () => !!findMove();
 function findMatches() {
   const g = G.grid, runs = [];
   for (let r = 0; r < G.rows; r++) for (let c = 0; c < G.cols;) {
+    if (!g[r][c]) { c++; continue; }
     const t = g[r][c].t; let e = c + 1;
-    while (e < G.cols && g[r][e].t === t) e++;
+    while (e < G.cols && g[r][e] && g[r][e].t === t) e++;
     if (e - c >= 3) { const cells = []; for (let i = c; i < e; i++) cells.push(r * G.cols + i); runs.push({ cells, dir: 'h', t }); }
     c = e;
   }
   for (let c = 0; c < G.cols; c++) for (let r = 0; r < G.rows;) {
+    if (!g[r][c]) { r++; continue; }
     const t = g[r][c].t; let e = r + 1;
-    while (e < G.rows && g[e][c].t === t) e++;
+    while (e < G.rows && g[e][c] && g[e][c].t === t) e++;
     if (e - r >= 3) { const cells = []; for (let i = r; i < e; i++) cells.push(i * G.cols + c); runs.push({ cells, dir: 'v', t }); }
     r = e;
   }
@@ -426,78 +439,162 @@ function burst(wx, wy, color, n, speed) {
     G.parts.push({ color, x: wx, y: wy, z: 0.3, vx: Math.cos(a) * v, vy: Math.sin(a) * v + 1, vz: (Math.random() - 0.3) * 3, life: 1, r: col.r, g: col.g, b: col.b });
   }
 }
-function clearStep(groups, swapped, combo) {
-  const set = new Set(), queue = [], spawns = [], fired = { line: false, bomb: false, color: false, forged: false };
+function specialCombo(a, b) {
+  if (!a.sp || !b.sp) return null;
+  if (a.sp === 'color' && b.sp === 'color') return { kind: 'all', label: 'Spectrum sweep!' };
+  if (a.sp === 'color' || b.sp === 'color') {
+    const other = a.sp === 'color' ? b : a;
+    return { kind: 'color-' + other.sp, target: other.t, label: other.sp === 'bomb' ? 'Prism bombs!' : 'Prism lines!' };
+  }
+  if (a.sp === 'bomb' && b.sp === 'bomb') return { kind: 'mega', label: 'Mega bomb!' };
+  if (a.sp === 'bomb' || b.sp === 'bomb') return { kind: 'cross3', label: 'Blast cross!' };
+  return { kind: 'cross', label: 'Cross clear!' };
+}
+function clearStep(groups, swapped, combo, trigger = null) {
+  const set = new Set(), queue = [], spawns = [];
+  const fired = { line: false, bomb: false, color: false, forged: false, thaw: false };
+  let icePoints = 0, iceHits = 0, iceRow = 0, iceCol = 0;
   const add = (r, c) => {
-    if (r < 0 || c < 0 || r >= G.rows || c >= G.cols || !G.grid[r][c]) return;
+    if (r < 0 || c < 0 || r >= G.rows || c >= G.cols || !G.grid[r][c] || frozen(r, c)) return;
     const k = r * G.cols + c; if (!set.has(k)) { set.add(k); queue.push(k); }
   };
-  for (const g of groups) {
-    for (const k of g.cells) add(k / G.cols | 0, k % G.cols);
-    if (g.special) spawns.push({ k: pickSpawn(g, swapped), t: g.t, sp: g.special, dir: g.dir });
+  const hit = (r, c, heat) => {
+    if (r < 0 || c < 0 || r >= G.rows || c >= G.cols) return;
+    if (!frozen(r, c)) { add(r, c); return; }
+    if (!heat) return;
+    const before = G.ice[r][c]; G.ice[r][c] = Math.max(0, before - heat); G.iceVersion++;
+    if (!G.ice[r][c]) { G.thawed++; icePoints += 50; } else icePoints += 15;
+    fired.thaw = true; iceHits++; iceRow += r; iceCol += c;
+    G.blasts.push({ r, c, life: 1, size: 0.85, color: '#a6e2ff', dur: 0.4 });
+    burst(c - (G.cols - 1) / 2, (G.rows - 1) / 2 - r, '#a6e2ff', 5, 2);
+  };
+  const blast = (r, c, radius = 1, heat = 1) => {
+    for (let dr = -radius; dr <= radius; dr++) for (let dc = -radius; dc <= radius; dc++) hit(r + dr, c + dc, heat);
+    G.blasts.push({ r, c, life: 1, size: radius === 2 ? 4.5 : 2.4, color: '#ffd84a', dur: 0.45 });
+    burst(c - (G.cols - 1) / 2, (G.rows - 1) / 2 - r, '#ffb347', radius === 2 ? 55 : 30, 6);
+    fired.bomb = true; G.shake = Math.max(G.shake, radius === 2 ? 1 : 0.6);
+  };
+  // A match chips each touching ice cell once, even at a T/L intersection.
+  const matchIce = new Set();
+  for (const group of groups) for (const k of group.cells) {
+    const r = k / G.cols | 0, c = k % G.cols;
+    for (const [dr, dc] of [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1]]) {
+      if (frozen(r + dr, c + dc)) matchIce.add((r + dr) * G.cols + c + dc);
+    }
+  }
+  for (const k of matchIce) hit(k / G.cols | 0, k % G.cols, 1);
+  for (const group of groups) {
+    for (const k of group.cells) add(k / G.cols | 0, k % G.cols);
+    if (group.special) {
+      let k = pickSpawn(group, swapped);
+      if (frozen(k / G.cols | 0, k % G.cols)) k = group.cells.find(key => !frozen(key / G.cols | 0, key % G.cols));
+      if (k !== undefined) spawns.push({ k, t: group.t, sp: group.special, dir: group.dir });
+    }
+  }
+  let suppressed = new Set();
+  if (trigger) {
+    for (const k of trigger.seeds) add(k / G.cols | 0, k % G.cols);
+    const combination = trigger.combination;
+    if (combination) {
+      G.lastCombo = combination.kind;
+      suppressed = new Set(trigger.seeds);
+      const r = trigger.center / G.cols | 0, c = trigger.center % G.cols;
+      if (combination.kind === 'mega') blast(r, c, 2, 2);
+      else if (combination.kind === 'cross' || combination.kind === 'cross3') {
+        const radius = combination.kind === 'cross3' ? 1 : 0, cells = new Set();
+        for (let d = -radius; d <= radius; d++) {
+          if (r + d >= 0 && r + d < G.rows) for (let col = 0; col < G.cols; col++) cells.add((r + d) * G.cols + col);
+          if (c + d >= 0 && c + d < G.cols) for (let row = 0; row < G.rows; row++) cells.add(row * G.cols + c + d);
+          G.beams.push({ r: r + d, c, dir: 'h', life: 1, color: '#ffe5a0' }, { r, c: c + d, dir: 'v', life: 1, color: '#ffe5a0' });
+        }
+        for (const k of cells) hit(k / G.cols | 0, k % G.cols, 1);
+        fired.line = true; fired.bomb = radius > 0; G.shake = 0.8;
+      } else if (combination.kind === 'all') {
+        for (let row = 0; row < G.rows; row++) for (let col = 0; col < G.cols; col++) hit(row, col, 1);
+        fired.color = true; G.flash = 0.6; G.flashColor = '#c5b5ff';
+      } else {
+        suppressed = new Set([trigger.colorKey]);
+        for (const row of G.grid) for (const piece of row) if (piece && !frozen(piece.r, piece.c) && piece.t === combination.target && !suppressed.has(piece.r * G.cols + piece.c)) {
+          piece.sp = combination.kind === 'color-bomb' ? 'bomb' : 'line'; piece.dir = (piece.r + piece.c) % 2 ? 'h' : 'v';
+          add(piece.r, piece.c);
+        }
+        fired.color = true;
+      }
+    }
   }
   let bonus = 0;
   while (queue.length) {
-    const k = queue.shift(), r = k / G.cols | 0, c = k % G.cols, p = G.grid[r][c];
-    if (!p.sp) continue;
-    bonus += 50; fired[p.sp] = true;
-    if (p.sp === 'line') {
-      for (let i = 0; i < (p.dir === 'h' ? G.cols : G.rows); i++) p.dir === 'h' ? add(r, i) : add(i, c);
-      G.beams.push({ r, c, dir: p.dir, life: 1, color: SHAPES[p.t].light });
-      G.shake = Math.max(G.shake, 0.5);
-    } else if (p.sp === 'bomb') {
-      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) add(r + dr, c + dc);
-      G.blasts.push({ r, c, life: 1, size: 2.4, color: '#ffd84a', dur: 0.4 });
-      G.blasts.push({ r, c, life: 1, size: 1.4, color: '#ffffff', dur: 0.28 });
-      burst(c - (G.cols - 1) / 2, (G.rows - 1) / 2 - r, '#ffb347', 40, 7);
-      G.shake = Math.max(G.shake, 0.8);
-    } else {
-      for (let rr = 0; rr < G.rows; rr++) for (let cc = 0; cc < G.cols; cc++) if (G.grid[rr][cc] && G.grid[rr][cc].t === p.t) add(rr, cc);
-      G.flash = 1; G.flashColor = SHAPES[p.t].color;
-      G.blasts.push({ r, c, life: 1, size: Math.max(G.rows, G.cols) - 1, color: SHAPES[p.t].light, dur: 0.6 });
-      G.shake = Math.max(G.shake, 1);
+    const k = queue.shift(), r = k / G.cols | 0, c = k % G.cols, piece = G.grid[r][c];
+    if (!piece.sp || suppressed.has(k)) continue;
+    bonus += 50; fired[piece.sp] = true;
+    if (piece.sp === 'line') {
+      for (let i = 0; i < (piece.dir === 'h' ? G.cols : G.rows); i++) piece.dir === 'h' ? hit(r, i, 1) : hit(i, c, 1);
+      G.beams.push({ r, c, dir: piece.dir, life: 1, color: SHAPES[piece.t].light });
+    } else if (piece.sp === 'bomb') blast(r, c);
+    else {
+      const target = trigger && trigger.target !== undefined && trigger.seeds.includes(k) ? trigger.target : piece.t;
+      for (let row = 0; row < G.rows; row++) for (let col = 0; col < G.cols; col++) if (G.grid[row][col] && G.grid[row][col].t === target) hit(row, col, 1);
+      G.flash = 0.6; G.flashColor = SHAPES[piece.t].color;
     }
   }
-  let sr = 0, sc = 0;
+  let sr = iceRow, sc = iceCol;
   for (const k of set) {
-    const r = k / G.cols | 0, c = k % G.cols, p = G.grid[r][c];
-    G.collected[p.t]++; sr += r; sc += c;
-    G.dying.push({ p, life: 1 });
-    G.blasts.push({ r, c, life: 1, size: 0.75, color: SHAPES[p.t].color, dur: 0.3 });
-    burst(c - (G.cols - 1) / 2, (G.rows - 1) / 2 - r, SHAPES[p.t].color, 9, 3.2);
+    const r = k / G.cols | 0, c = k % G.cols, piece = G.grid[r][c];
+    G.collected[piece.t]++; sr += r; sc += c;
+    G.dying.push({ p: piece, life: 1 });
+    G.blasts.push({ r, c, life: 1, size: 0.75, color: SHAPES[piece.t].color, dur: 0.3 });
+    burst(c - (G.cols - 1) / 2, (G.rows - 1) / 2 - r, SHAPES[piece.t].color, 9, 3.2);
     G.grid[r][c] = null;
   }
-  for (const s of spawns) {
-    const r = s.k / G.cols | 0, c = s.k % G.cols, np = mk(s.t, r, c, s.sp, s.dir);
-    np.born = 0; G.grid[r][c] = np; fired.forged = true;
-    burst(c - (G.cols - 1) / 2, (G.rows - 1) / 2 - r, '#ffffff', 16, 2.5);
+  for (const spawn of spawns) {
+    const r = spawn.k / G.cols | 0, c = spawn.k % G.cols, piece = mk(spawn.t, r, c, spawn.sp, spawn.dir);
+    piece.born = 0; G.grid[r][c] = piece; fired.forged = true;
   }
-  const pts = (set.size * 10 + bonus) * combo;
-  G.score += pts;
-  floatText(sc / set.size, sr / set.size, '+' + pts, pts);
+  const points = (set.size * 10 + bonus + icePoints) * combo;
+  G.score += points;
+  if (set.size + iceHits) floatText(sc / (set.size + iceHits), sr / (set.size + iceHits), '+' + points, points);
   return fired;
 }
 function gravity() {
+  // Frozen pieces divide a column into independent falling segments.
   for (let c = 0; c < G.cols; c++) {
-    let w = G.rows - 1;
-    for (let r = G.rows - 1; r >= 0; r--) {
-      const p = G.grid[r][c];
-      if (!p) continue;
-      if (r !== w) { G.grid[w][c] = p; G.grid[r][c] = null; p.r = w; }
-      w--;
+    let bottom = G.rows - 1;
+    while (bottom >= 0) {
+      if (frozen(bottom, c)) { bottom--; continue; }
+      let top = bottom;
+      while (top > 0 && !frozen(top - 1, c)) top--;
+      let write = bottom;
+      for (let r = bottom; r >= top; r--) {
+        const piece = G.grid[r][c];
+        if (!piece) continue;
+        if (r !== write) { G.grid[write][c] = piece; G.grid[r][c] = null; piece.r = write; }
+        write--;
+      }
+      const count = write - top + 1;
+      for (let r = write; r >= top; r--) {
+        const piece = mk(rnd(SHAPES.length), r, c);
+        if (top === 0) piece.y = r - count;
+        else piece.born = 0; // Refill under an anchor without animating through the ice.
+        G.grid[r][c] = piece;
+      }
+      bottom = top - 1;
     }
-    const empty = w + 1;
-    for (let r = w; r >= 0; r--) { const p = mk(rnd(SHAPES.length), r, c); p.y = r - empty; G.grid[r][c] = p; }
   }
 }
 function shuffleBoard() {
-  const ps = G.grid.flat();
+  const slots = [], pieces = [];
+  for (let r = 0; r < G.rows; r++) for (let c = 0; c < G.cols; c++) if (!frozen(r, c)) { slots.push({ r, c }); pieces.push(G.grid[r][c]); }
   for (let tries = 0; tries < 300; tries++) {
-    for (let i = ps.length - 1; i > 0; i--) { const j = rnd(i + 1); [ps[i], ps[j]] = [ps[j], ps[i]]; }
-    ps.forEach((p, i) => { p.r = i / G.cols | 0; p.c = i % G.cols; G.grid[p.r][p.c] = p; });
+    for (let i = pieces.length - 1; i > 0; i--) { const j = rnd(i + 1); [pieces[i], pieces[j]] = [pieces[j], pieces[i]]; }
+    slots.forEach(({ r, c }, i) => { const piece = pieces[i]; piece.r = r; piece.c = c; G.grid[r][c] = piece; });
     if (!findMatches().length && hasMoves()) return;
   }
+  // Keep anchors and remaining ice intact even in the rare regeneration fallback.
+  const anchors = G.grid.flat().filter(piece => frozen(piece.r, piece.c));
   newBoard();
+  for (const piece of anchors) G.grid[piece.r][piece.c] = piece;
+  const nearIce = slots.find(({ r, c }) => [[-1, 0], [1, 0], [0, -1], [0, 1]].some(([dr, dc]) => frozen(r + dr, c + dc)));
+  if (nearIce) G.grid[nearIce.r][nearIce.c].sp = 'bomb';
 }
 const settled = () => new Promise(res => G.waiters.push(res));
 const sleep = ms => new Promise(res => G.timers.push({ t: ms / 1000, res }));
@@ -507,49 +604,63 @@ function swapCells(a, b) {
   pa.r = b.r; pa.c = b.c; pb.r = a.r; pb.c = a.c;
 }
 async function trySwap(a, b) {
-  const gen = G.gen;
+  if (!canInput() || frozen(a.r, a.c) || frozen(b.r, b.c)) return;
+  const same = a.r === b.r && a.c === b.c;
+  if ((!same && Math.abs(a.r - b.r) + Math.abs(a.c - b.c) !== 1) || (same && !G.grid[a.r][a.c].sp)) return;
+  const gen = G.gen, iceVersion = G.iceVersion, first = G.grid[a.r][a.c], second = G.grid[b.r][b.c];
+  const aKey = a.r * G.cols + a.c, bKey = b.r * G.cols + b.c;
+  const combination = same ? null : specialCombo(first, second);
+  let trigger = same ? { seeds: [aKey] } : combination ? {
+    seeds: [aKey, bKey], combination, center: bKey, colorKey: first.sp === 'color' ? bKey : aKey,
+  } : first.sp || second.sp ? {
+    seeds: [first.sp ? bKey : aKey], target: first.sp === 'color' ? second.t : second.sp === 'color' ? first.t : undefined,
+  } : null;
   G.busy = true; G.hint = null; G.idle = 0;
-  swapCells(a, b); sfx.swap();
+  if (!same) swapCells(a, b);
+  sfx.swap();
   await settled(); if (gen !== G.gen) return;
-  if (!findMatches().length) {
-    swapCells(a, b); sfx.bad();
-    await settled(); if (gen !== G.gen) return;
+  if (!trigger && !findMatches().length) {
+    swapCells(a, b); sfx.bad(); await settled(); if (gen !== G.gen) return;
     G.busy = false; checkEnd(); return;
   }
   if (G.lv.moves) G.moves--;
   hud();
-  let swapped = [b.r * G.cols + b.c, a.r * G.cols + a.c], combo = 0;
+  let swapped = [bKey, aKey], combo = 0;
+  if (combination) toast(combination.label);
   for (;;) {
     const groups = findMatches();
-    if (!groups.length) break;
+    if (!groups.length && !trigger) break;
     combo++;
-    const fired = clearStep(groups, swapped, combo);
-    swapped = [];
+    const fired = clearStep(groups, swapped, combo, trigger); trigger = null; swapped = [];
     sfx.pop(combo);
     if (fired.color) sfx.color(); else if (fired.bomb) sfx.bomb(); else if (fired.line) sfx.line();
-    if (fired.forged) sfx.forge();
-    if (combo >= 2) toast(combo >= 5 ? 'MEGA x' + combo + '!' : 'Combo x' + combo + '!');
+    if (fired.forged || fired.thaw) sfx.forge();
+    if (combo >= 2) toast('Combo x' + combo + '!');
     hud(true);
     await sleep(240); if (gen !== G.gen) return;
-    gravity();
-    await settled(); if (gen !== G.gen) return;
-    sfx.land();
-    await sleep(70); if (gen !== G.gen) return;
+    gravity(); await settled(); if (gen !== G.gen) return;
+    sfx.land(); await sleep(70); if (gen !== G.gen) return;
   }
-  if (!hasMoves() && !isOver()) {
-    toast('Shuffle!'); sfx.shuffle(); shuffleBoard();
-    await settled(); if (gen !== G.gen) return;
+  if (!isOver()) {
+    const growth = advanceFrost(G.ice, G.grid, G.frost, G.iceVersion !== iceVersion);
+    if (growth) {
+      const { r, c } = growth; G.iceInitial[r][c] = 1; G.iceTotal++; G.iceVersion++; G.hint = null; G.idle = 0;
+      G.blasts.push({ r, c, life: 1, size: 1.05, color: '#9ce7ff', dur: 0.55 });
+      toast('Frost spread!'); sfx.forge();
+    }
   }
-  G.busy = false;
-  checkEnd();
+  hud();
+  if (!hasMoves() && !isOver()) { toast('Shuffle!'); sfx.shuffle(); shuffleBoard(); await settled(); if (gen !== G.gen) return; }
+  G.busy = false; checkEnd();
 }
 function goalMet() {
   const lv = G.lv;
-  return lv.type === 'collect' ? G.collected[lv.shape] >= lv.count : G.score >= lv.goal;
+  const targetMet = lv.type === 'collect' ? G.collected[lv.shape] >= lv.count : G.score >= lv.goal;
+  return targetMet && G.thawed >= G.iceTotal;
 }
 function isOver() {
   const lv = G.lv;
-  if (lv.type === 'collect' && goalMet()) return true;
+  if ((lv.type === 'collect' || G.iceTotal > 0) && goalMet()) return true;
   if (lv.moves && G.moves <= 0) return true;
   return !!(lv.time && G.timeUp);
 }
@@ -559,7 +670,7 @@ function endLevel(win) {
   setMusicCategory('menu');
   const lv = G.lv; let stars = 0;
   if (win) {
-    if (lv.type === 'collect') { const f = G.moves / lv.moves; stars = f >= 0.3 ? 3 : f >= 0.12 ? 2 : 1; }
+    if (lv.type === 'collect' || G.iceTotal > 0) { const f = G.moves / lv.moves; stars = f >= 0.3 ? 3 : f >= 0.12 ? 2 : 1; }
     else stars = G.score >= lv.goal * 1.8 ? 3 : G.score >= lv.goal * 1.35 ? 2 : 1;
     save.stars[G.level] = Math.max(save.stars[G.level] || 0, stars); persist();
     // victory confetti
@@ -574,6 +685,7 @@ function endLevel(win) {
     let txt = 'Score: ' + fmt(G.score);
     if (lv.type === 'collect') txt += ' · ' + Math.min(G.collected[lv.shape], lv.count) + '/' + lv.count + ' ' + SHAPES[lv.shape].plural;
     else if (!win) txt += ' of ' + fmt(lv.goal);
+    if (G.iceTotal) txt += ' · Ice thawed: ' + G.thawed + '/' + G.iceTotal;
     $('resText').textContent = txt;
     $('nextBtn').style.display = win && G.level + 1 < LEVELS.length ? '' : 'none';
     $('retryBtn').textContent = win ? 'Play Again' : 'Try Again';
@@ -583,13 +695,25 @@ function endLevel(win) {
 
 // ---------- HUD / screens ----------
 function goalText(lv) {
-  if (lv.type === 'score') return 'Score ' + fmt(lv.goal) + ' points in ' + lv.moves + ' moves';
-  if (lv.type === 'timed') return 'Score ' + fmt(lv.goal) + ' points in ' + lv.time + ' seconds';
-  return 'Clear ' + lv.count + ' ' + SHAPES[lv.shape].plural + ' in ' + lv.moves + ' moves';
+  const text = lv.type === 'score' ? 'Score ' + fmt(lv.goal) + ' points in ' + lv.moves + ' moves'
+    : lv.type === 'timed' ? 'Score ' + fmt(lv.goal) + ' points in ' + lv.time + ' seconds'
+    : 'Clear ' + lv.count + ' ' + SHAPES[lv.shape].plural + ' in ' + lv.moves + ' moves';
+  return text + (Number.isInteger(lv.ice) ? ' · Thaw all ice' : '');
+}
+function frostWarning(state) {
+  const warning = $('iceWarning'); warning.hidden = !state;
+  if (!state) return;
+  const turns = state.after - state.quiet;
+  warning.textContent = state.remaining ? 'Chip ice in ' + turns + (turns === 1 ? ' move · ' : ' moves · ') + state.remaining + ' spreads left' : 'Frost has stopped spreading';
+  warning.classList.toggle('urgent', !!state.remaining && turns === 1);
 }
 let lastSec = -1;
 function hud(bump) {
   const lv = G.lv; if (!lv) return;
+  frostWarning(G.frost);
+  $('iceProgress').hidden = !G.iceTotal;
+  $('iceProgress').textContent = 'Ice: ' + G.thawed + '/' + G.iceTotal + ' thawed';
+  $('iceProgress').classList.toggle('done', G.thawed >= G.iceTotal);
   $('sScore').textContent = fmt(G.score);
   if (bump) { const b = $('sScoreBox'); b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
   let frac;
@@ -597,6 +721,7 @@ function hud(bump) {
     const n = Math.min(G.collected[lv.shape], lv.count);
     $('sGoalTxt').textContent = n + '/' + lv.count; frac = n / lv.count;
   } else { $('sGoal').textContent = fmt(lv.goal); frac = G.score / lv.goal; }
+  if (G.iceTotal) frac = Math.min(frac, G.thawed / G.iceTotal);
   $('barFill').style.width = Math.min(100, frac * 100) + '%';
   if (lv.time) {
     const s = Math.ceil(G.timeLeft);
@@ -619,8 +744,9 @@ function buildLevels() {
     const unlocked = i === 0 || (save.stars[i - 1] || 0) > 0;
     b.className = 'lvBtn'; b.disabled = !unlocked;
     b.innerHTML = unlocked
-      ? i + 1 + '<small>' + '★'.repeat(st) + '☆'.repeat(3 - st) + '</small><span class="kind">' + lv.type + '</span>'
+      ? i + 1 + '<small>' + '★'.repeat(st) + '☆'.repeat(3 - st) + '</small><span class="kind">' + lv.type + (Number.isInteger(lv.ice) ? ' · ice' : '') + '</span>'
       : '🔒';
+    b.title = goalText(lv);
     b.onclick = () => startLevel(i);
     grid.appendChild(b);
   });
@@ -634,17 +760,30 @@ function startLevel(i) {
   flush();
   frameRate.reset();
   const lv = LEVELS[i];
-  Object.assign(G, { active: true, paused: false, busy: false, ended: false, timeUp: false, level: i, lv, score: 0,
+  Object.assign(G, { active: true, paused: false, busy: false, ended: false, timeUp: false, level: i, lv, score: 0, lastCombo: null,
     moves: lv.moves || 0, timeLeft: lv.time || 0, collected: [0, 0, 0, 0, 0], sel: null, drag: null, hint: null, idle: 0,
     dying: [], parts: [], beams: [], blasts: [], flash: 0, shake: 0 });
   setMusicCategory(lv.type);
   $('floats').innerHTML = '';
   show(null); $('lvGoal').textContent = goalText(lv);
+  $('iceProgress').hidden = !Number.isInteger(lv.ice);
+  $('iceProgress').textContent = Number.isInteger(lv.ice) ? 'Ice: 0/' + [6,8,12,16][lv.ice] + ' thawed' : '';
+  frostWarning(lv.growth ? { after: lv.growth.after, remaining: lv.growth.limit, quiet: 0 } : null);
   const wrap = $('boardWrap');
   Object.assign(G, chooseBoardShape(save.boardLayout, wrap.clientWidth, wrap.clientHeight));
-  newBoard();
-  // drop the opening board in from above
-  for (const p of G.grid.flat()) p.y = p.r - G.rows - 1 - (G.rows - p.r) * 0.35 - p.c * 0.08;
+  const plan = Number.isInteger(lv.ice) ? createIcePlan(G.rows,G.cols,lv.ice)
+    : { ice: Array.from({ length: G.rows }, () => Array(G.cols).fill(0)), powers: [], total: 0 };
+  G.ice = plan.ice; G.iceInitial = plan.ice.map(row => row.slice()); G.iceTotal = plan.total; G.thawed = 0; G.iceVersion++;
+  G.frost = createFrostGrowth(G.ice,lv.growth);
+  do {
+    newBoard();
+    for (const power of plan.powers) G.grid[power.r][power.c] = mk(power.t,power.r,power.c,power.sp,power.dir);
+  } while (findMatches().length);
+  if (G.iceTotal) {
+    for (const p of G.grid.flat()) if (!frozen(p.r,p.c)) p.born = 0;
+  } else {
+    for (const p of G.grid.flat()) p.y = p.r - G.rows - 1 - (G.rows - p.r) * 0.35 - p.c * 0.08;
+  }
   $('lvName').textContent = 'Level ' + (i + 1);
   $('lvGoal').textContent = goalText(lv);
   $('sLeftLbl').textContent = lv.time ? 'Time' : 'Moves';
@@ -729,8 +868,10 @@ function bindBoardInput() {
   cv.addEventListener('pointerdown', e => {
     if (!canInput()) return;
     const cell = cellAt(e); if (!cell) return;
+    if (frozen(cell.r, cell.c)) { G.sel = null; G.drag = null; sfx.bad(); toast('Match through or beside ice'); return; }
     G.idle = 0; G.hint = null;
     const s = G.sel;
+    if (s && s.r === cell.r && s.c === cell.c && G.grid[cell.r][cell.c].sp) { G.sel = null; G.drag = null; trySwap(cell, cell); return; }
     if (s && Math.abs(s.r - cell.r) + Math.abs(s.c - cell.c) === 1) { G.sel = null; trySwap(s, cell); return; }
     G.sel = s && s.r === cell.r && s.c === cell.c ? null : cell;
     if (G.sel) sfx.select();
@@ -848,7 +989,7 @@ applyGraphics().then(() => {
   $('loadErr').style.display = 'none';
   requestAnimationFrame(frame);
   // exposed for debugging in the console
-  window.__mb = { G, save, sfx, get renderer() { return graphics; }, get music() { return musicPlayer; }, startLevel, quit, show, setPaused, update, render, settled, trySwap, formsMatch, findMove, findMatches, clearStep, gravity, mk };
+  window.__mb = { G, save, sfx, get renderer() { return graphics; }, get music() { return musicPlayer; }, startLevel, quit, show, setPaused, update, render, settled, trySwap, formsMatch, findMove, findMatches, clearStep, gravity, shuffleBoard, frozen, specialCombo, goalMet, checkEnd, levels: LEVELS, mk };
 }).catch(error => {
   window.__mbStarting = false;
   $('loadErr').style.display = 'block';

@@ -134,7 +134,7 @@ test('the lab precaches its complete import graph without sharing the main cache
       if (!seen.has(target)) { seen.add(target); await imports(target); }
     }
   }
-  await imports(path.join(root, 'ice-lab/index.html')); assert.equal(seen.size, 19);
+  await imports(path.join(root, 'ice-lab/index.html')); assert.equal(seen.size, 23);
 });
 
 test('a new player thaws the first board through ordinary swaps; saves and offline cache stay isolated', { timeout: 60000 }, async t => {
@@ -142,7 +142,7 @@ test('a new player thaws the first board through ordinary swaps; saves and offli
   await page.goto(origin + '/'); await page.waitForFunction(() => !!window.__mb);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  await page.evaluate(async () => { const old = await caches.open('ice-lab-v3'); await old.put('/ice-lab/index.html', new Response('Old lab')); });
+  await page.evaluate(async () => { const old = await caches.open('ice-lab-v4'); await old.put('/ice-lab/index.html', new Response('Old lab')); });
   await ready(page);
   await page.waitForFunction(() => navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL.endsWith('/ice-lab/sw.js'));
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -169,8 +169,8 @@ test('a new player thaws the first board through ordinary swaps; saves and offli
   assert.ok(await page.evaluate(() => JSON.parse(localStorage.getItem('matchbusters-ice-lab')).stars[0] > 0));
   assert.equal(await page.evaluate(() => localStorage.getItem('matchbusters')), mainSave);
   const caches = await page.evaluate(() => window.caches.keys());
-  assert.ok(caches.includes('match-busters-v12') && caches.includes('ice-lab-v4'));
-  assert.ok(!caches.includes('ice-lab-v3'));
+  assert.ok(caches.includes('match-busters-v13') && caches.includes('ice-lab-v5'));
+  assert.ok(!caches.includes('ice-lab-v4'));
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => !!window.__mb);
   assert.ok(await page.evaluate(() => __mb.save.stars[0] > 0));
   assert.equal(await page.evaluate(() => localStorage.getItem('matchbusters')), mainSave);

@@ -71,7 +71,7 @@ test('all imports resolve locally and are precached without import maps', async 
     }
   }
   await checkImports(html, path.join(root, 'index.html'));
-  assert.equal(visited.size, 18);
+  assert.equal(visited.size, 19);
 });
 
 async function newPage(t, options = {}) {
@@ -132,7 +132,7 @@ test('cold load, a match, and offline reload work under a GitHub Pages subpath',
   await play(page);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v12']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v13']);
   await context.setOffline(true);
   await page.reload();
   await play(page);
@@ -250,7 +250,7 @@ test('an existing v11 installation updates and then works offline', { timeout: 6
     await registration.update();
     await changed;
   });
-  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v12');
+  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v13');
   await context.setOffline(true);
   await page.reload();
   await play(page);

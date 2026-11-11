@@ -4,9 +4,30 @@ A classic match-3 puzzle game that runs in the browser, with shiny Three.js grap
 
 **Play it:** https://creationix.github.io/match-busters/
 
-## Ice Lab playtest
+## How to play
 
-Try the separate [Ice Lab prototype](https://creationix.github.io/match-busters/ice-lab/). Its four experiments are unlocked from the start and use their own progress and offline cache. The main game's levels and progress are unchanged; the lab initially inherits your graphics and audio preferences.
+Drag a piece onto a neighbour (or tap two neighbours) to swap them. Line up three or more of the same shape to clear them. Each shape always has the same colour.
+
+| Match | Creates |
+| --- | --- |
+| 4 in a row | Line clear: wipes a whole row or column |
+| T or L shape | Bomb: clears the surrounding 3x3 area |
+| 5 in a row | Colour bomb: clears every piece of its shape |
+
+Power-ups fire when swapped, double-tapped, matched, or caught in another blast. Swapping two power-ups combines their effects. Cascades multiply your score.
+
+The sixteen campaign levels retain their original score, collection, and timed targets. Icy levels also require thawing every frozen cell; their HUD shows both objectives. They have a few extra moves to make room for the ice objective. Clearing an icy board and its main target finishes the run immediately, and remaining moves determine its stars. Existing stars, unlocked levels, graphics, board, and audio preferences stay saved.
+
+| Levels | New mechanics |
+| --- | --- |
+| 1–4 | Core matching and power-up activation/combinations |
+| 5–8 | Thin ice on levels 5, 7, and 8 |
+| 9–12 | Thick ice on levels 9 and 12; level 10 uses thin ice |
+| 13–16 | Mixed ice and bounded spreading frost on levels 13, 15, and 16 |
+
+Timed levels 3, 6, 11, and 14 keep their original clocks and ice-free boards. Level 13 spreads once after four moves without ice damage, up to four times. Levels 15 and 16 spread after three such moves, up to six/eight times respectively. Any chip resets the visible countdown. Thinking time, pauses, invalid swaps, and completed boards never trigger growth. Thawed cells and earned power-ups stay protected, and growth keeps the unfrozen play area connected.
+
+## Frost and power-ups
 
 Frozen pieces stay anchored and cannot swap, but their colors still count in matches. Matches through or orthogonally beside ice chip one layer per cascade step. Line clears and color bombs also thaw ice; bombs hit a larger 3×3 area. Thick ice takes two hits. Swap any power-up with a normal neighbor to fire it at its destination, double-tap to fire it in place, or swap adjacent power-ups to combine them:
 
@@ -19,23 +40,11 @@ Frozen pieces stay anchored and cannot swap, but their colors still count in mat
 | Color bomb + line | Pieces of the partner's color become line clears |
 | Color bomb + color bomb | Clear unfrozen pieces and chip all ice, triggering power-ups |
 
-First Thaw has no starter power-ups and teaches thawing through ordinary matches. Crossfire teaches combinations, Deep Freeze introduces thick ice, and Prism Storm provides an optional color-bomb chain. Starter pairs are bonuses; every ice island can be chipped by regular play. Deep Freeze adds one neighboring frozen cell after four moves without ice damage (up to four spreads); Prism Storm does so after three (up to eight). Any chip resets the visible countdown. Thinking time, pauses, invalid swaps, and completed boards never trigger growth. Thawed cells and earned power-ups stay protected, and growth keeps the unfrozen play area connected. Seeker pieces remain a future experiment.
-
 Fancy and Extreme render ice with a lightweight bevel shader: connected cells share one rounded outline, including L/T shapes and holes. Thickness blends smoothly into thin or cracked sections, with larger shaded rims and denser frost for double-frozen ice. Damage adds branching cracks. Centers stay clear so piece colors remain readable. Smooth caches the same continuous surface and still stops drawing settled boards. The ice shader needs no scene-copy or transmission pass.
 
-## How to play
+## Ice Lab playtest
 
-Drag a piece onto a neighbour (or tap two neighbours) to swap them. Line up three or more of the same shape to clear them. Each shape always has the same colour.
-
-| Match | Creates |
-| --- | --- |
-| 4 in a row | Line clear: wipes a whole row or column |
-| T or L shape | Bomb: clears the surrounding 3x3 area |
-| 5 in a row | Colour bomb: clears every piece of its shape |
-
-Power-ups fire when they are matched or caught in another blast. Cascades multiply your score.
-
-There are sixteen levels with three kinds of goal: reach a score in a set number of moves, reach a score against the clock, or collect a number of one shape. Levels 9–16 raise the targets and introduce collection goals for blue doughnuts and red squares.
+The separate [Ice Lab](https://creationix.github.io/match-busters/ice-lab/) keeps its four unlocked experiments and independent progress. It shares the campaign's frost helpers and renderers, so artwork fixes apply in both places. The lab initially inherits graphics and audio preferences without copying campaign stars. First Thaw teaches ordinary thawing, Crossfire demonstrates combinations, Deep Freeze adds thick ice and slow spreading, and Prism Storm adds color-bomb chains and faster spreading. Seeker pieces remain a future experiment.
 
 ## Running locally
 
@@ -79,4 +88,4 @@ npx playwright install chromium
 npm test
 ```
 
-The tests cover local module resolution, offline assets and upgrades, swaps and resizing, power-up chains and refills, frame-rate detection, the graphics offer, mode switching, and saved progress. They also verify that smooth mode works with WebGL disabled and that settled boards are not redrawn. To run against WebKit, install it with `npx playwright install webkit` and run `TEST_BROWSER=webkit npm test`. To use an existing Chromium installation, set `CHROMIUM_PATH` to its executable.
+The tests cover local module resolution, offline assets and upgrades, campaign progression and combined objectives, frost growth and contours, swaps and resizing, power-up combinations and refills, frame-rate detection, the graphics offer, mode switching, and saved progress. They also verify that smooth mode works with WebGL disabled and that settled boards are not redrawn. To run against WebKit, install it with `npx playwright install webkit` and run `TEST_BROWSER=webkit npm test`. To use an existing Chromium installation, set `CHROMIUM_PATH` to its executable.

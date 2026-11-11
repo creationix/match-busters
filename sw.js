@@ -1,6 +1,6 @@
 // Offline support: everything the game needs is cached on first visit.
 // Bump CACHE when the list of files changes.
-const CACHE = 'match-busters-v12';
+const CACHE = 'match-busters-v13';
 const THREE = './vendor/three-0.160.0/';
 const JSM = THREE + 'examples/jsm/';
 const ASSETS = [
@@ -11,6 +11,7 @@ const ASSETS = [
   './frame-rate.js',
   './music.js',
   './board-layout.js',
+  './ice.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -29,6 +30,8 @@ const ASSETS = [
   JSM + 'environments/RoomEnvironment.js',
   JSM + 'geometries/RoundedBoxGeometry.js',
 ];
+
+const cached = (request, options) => caches.open(CACHE).then(cache => cache.match(request, options));
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -54,7 +57,7 @@ self.addEventListener('fetch', e => {
           if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
           return res;
         })
-        .catch(() => caches.match(req, { ignoreSearch: true }).then(hit => hit || (req.mode === 'navigate' ? caches.match('./index.html') : Response.error())))
+        .catch(() => cached(req, { ignoreSearch: true }).then(hit => hit || (req.mode === 'navigate' ? cached('./index.html') : Response.error())))
     );
   }
 });
