@@ -1,3 +1,4 @@
+import { BOARD_PADDING } from './board-layout.js';
 import * as THREE from './vendor/three-0.160.0/build/three.module.js';
 import { EffectComposer } from './vendor/three-0.160.0/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from './vendor/three-0.160.0/examples/jsm/postprocessing/RenderPass.js';
@@ -7,9 +8,9 @@ import { ShaderPass } from './vendor/three-0.160.0/examples/jsm/postprocessing/S
 import { RoomEnvironment } from './vendor/three-0.160.0/examples/jsm/environments/RoomEnvironment.js';
 import { RoundedBoxGeometry } from './vendor/three-0.160.0/examples/jsm/geometries/RoundedBoxGeometry.js';
 
-export function create3DRenderer(cv, { G, SHAPES, N, extreme = false }) {
+export function create3DRenderer(cv, { G, SHAPES, extreme = false }) {
   const TAU = Math.PI * 2;
-  let frames = 0, size = 400;
+  let frames = 0, width = 400, height = 400;
   const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: true });
   // Keep Extreme's highlights bright without washing out the playable board.
   renderer.toneMapping = extreme ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
@@ -18,24 +19,31 @@ export function create3DRenderer(cv, { G, SHAPES, N, extreme = false }) {
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#140a2e');
     const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
-    const CAM_D = 4.2 / Math.tan(THREE.MathUtils.degToRad(17.5));
+    let cameraDistance = 14, rows = 0, cols = 0, midX = 3.5, midY = 3.5;
     const sun = new THREE.DirectionalLight(0xffffff, 1.2); sun.position.set(-3, 5, 8); scene.add(sun);
     scene.add(new THREE.AmbientLight(0x9988dd, 0.6));
     let composer = null, environmentTarget = null, prismPass = null;
 
-    // board tiles
-    {
-      const tc = document.createElement('canvas'); tc.width = tc.height = 512;
-      const c = tc.getContext('2d'), s = 64;
-      c.fillStyle = '#1a1035'; c.fillRect(0, 0, 512, 512);
-      for (let r = 0; r < N; r++) for (let col = 0; col < N; col++) {
-        c.fillStyle = (r + col) % 2 ? '#211541' : '#2a1c50';
-        c.beginPath(); if (c.roundRect) c.roundRect(col * s + 2, r * s + 2, s - 4, s - 4, 9); else c.rect(col * s + 2, r * s + 2, s - 4, s - 4); c.fill();
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), new THREE.MeshBasicMaterial());
+    board.position.z = -0.45; scene.add(board);
+    function updateBoard() {
+      if (rows === G.rows && cols === G.cols) return;
+      rows = G.rows; cols = G.cols; midX = (cols - 1) / 2; midY = (rows - 1) / 2;
+      const tile = 64, textureCanvas = document.createElement('canvas');
+      textureCanvas.width = cols * tile; textureCanvas.height = rows * tile;
+      const ctx = textureCanvas.getContext('2d');
+      ctx.fillStyle = '#1a1035'; ctx.fillRect(0, 0, textureCanvas.width, textureCanvas.height);
+      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+        ctx.fillStyle = (r + c) % 2 ? '#211541' : '#2a1c50'; ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(c * tile + 2, r * tile + 2, tile - 4, tile - 4, 9);
+        else ctx.rect(c * tile + 2, r * tile + 2, tile - 4, tile - 4);
+        ctx.fill();
       }
-      const tex = new THREE.CanvasTexture(tc); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
-      const board = new THREE.Mesh(new THREE.PlaneGeometry(8, 8), new THREE.MeshBasicMaterial({ map: tex }));
-      board.position.z = -0.45; board.scale.setScalar(1.04); scene.add(board);
+      const texture = new THREE.CanvasTexture(textureCanvas); texture.colorSpace = THREE.SRGBColorSpace; texture.anisotropy = 4;
+      board.geometry.dispose(); if (board.material.map) board.material.map.dispose();
+      board.geometry = new THREE.PlaneGeometry(cols, rows); board.material.map = texture; board.material.needsUpdate = true;
     }
+    updateBoard();
     function canvasTex(draw) {
       const tc = document.createElement('canvas'); tc.width = tc.height = 128; draw(tc.getContext('2d'));
       const t = new THREE.CanvasTexture(tc); t.colorSpace = THREE.SRGBColorSpace; return t;
@@ -131,7 +139,7 @@ export function create3DRenderer(cv, { G, SHAPES, N, extreme = false }) {
           if (selected) { sc *= 1.18 + 0.05 * Math.sin(time * 9); z = 0.5; }
           else if (G.hint && (isCell(G.hint[0], p) || isCell(G.hint[1], p))) sc *= 1 + 0.1 * Math.sin(time * 8);
           if (p.sp) sc *= 1 + 0.04 * pulse;
-          g.position.set(p.x - 3.5, 3.5 - p.y, z);
+          g.position.set(p.x - midX, midY - p.y, z);
           g.scale.setScalar(sc);
           const m = u.main;
           if (p.t === 4) m.rotation.y = time * (selected ? 5 : 1.3) + u.phase;
@@ -147,7 +155,7 @@ export function create3DRenderer(cv, { G, SHAPES, N, extreme = false }) {
         for (const d of G.dying) {
           const p = d.p, g = p.mesh || (p.mesh = buildMesh(p)), u = g.userData, k = 1 - d.life;
           seen.add(g);
-          g.position.set(p.x - 3.5, 3.5 - p.y, 0.2 + k);
+          g.position.set(p.x - midX, midY - p.y, 0.2 + k);
           g.scale.setScalar(k < 0.3 ? 1 + k * 1.2 : Math.max(0.001, 1.36 * (d.life / 0.7)));
           u.main.rotation.z += 0.25; u.main.rotation.y += 0.2;
           u.mat.emissive.set(0xffffff); u.mat.emissiveIntensity = 0.3 + k * 1.6;
@@ -162,13 +170,13 @@ export function create3DRenderer(cv, { G, SHAPES, N, extreme = false }) {
         const m = b.mesh || (b.mesh = fxGroup.add(new THREE.Mesh(PLANE, additive(b.color))) && fxGroup.children[fxGroup.children.length - 1]);
         fx.add(m);
         const w = 0.15 + 0.9 * b.life;
-        if (b.dir === 'h') { m.position.set(0, 3.5 - b.r, 0.7); m.scale.set(12, w, 1); } else { m.position.set(b.c - 3.5, 0, 0.7); m.scale.set(w, 12, 1); }
+        if (b.dir === 'h') { m.position.set(0, midY - b.r, 0.7); m.scale.set(cols + 4, w, 1); } else { m.position.set(b.c - midX, 0, 0.7); m.scale.set(w, rows + 4, 1); }
         m.material.opacity = b.life; m.material.color.set(b.color).multiplyScalar(1.5);
       }
       for (const b of G.blasts) {
         const m = b.mesh || (b.mesh = fxGroup.add(new THREE.Mesh(RINGFX, additive(b.color))) && fxGroup.children[fxGroup.children.length - 1]);
         fx.add(m);
-        m.position.set(b.c - 3.5, 3.5 - b.r, 0.6);
+        m.position.set(b.c - midX, midY - b.r, 0.6);
         m.scale.setScalar(b.size * (0.2 + 0.8 * (1 - b.life * b.life)));
         m.material.opacity = b.life;
       }
@@ -176,7 +184,7 @@ export function create3DRenderer(cv, { G, SHAPES, N, extreme = false }) {
       liveFx = fx;
 
       selMesh.visible = !!G.sel;
-      if (G.sel) { selMesh.position.x = G.sel.c - 3.5; selMesh.position.y = 3.5 - G.sel.r; selMesh.material.opacity = 0.6 + 0.4 * pulse; }
+      if (G.sel) { selMesh.position.x = G.sel.c - midX; selMesh.position.y = midY - G.sel.r; selMesh.material.opacity = 0.6 + 0.4 * pulse; }
       flashMesh.visible = G.flash > 0;
       if (G.flash > 0) { flashMesh.material.color.set(G.flashColor); flashMesh.material.opacity = G.flash * 0.55; }
 
@@ -191,7 +199,7 @@ export function create3DRenderer(cv, { G, SHAPES, N, extreme = false }) {
       if (n) { pGeo.attributes.position.needsUpdate = true; pGeo.attributes.color.needsUpdate = true; }
 
       const sh = G.shake * (extreme ? 0.3 : 0.18);
-      camera.position.set(Math.sin(time * 0.35) * 0.45 + (Math.random() - 0.5) * sh, Math.cos(time * 0.28) * 0.3 + (Math.random() - 0.5) * sh, CAM_D);
+      camera.position.set(Math.sin(time * 0.35) * 0.45 + (Math.random() - 0.5) * sh, Math.cos(time * 0.28) * 0.3 + (Math.random() - 0.5) * sh, cameraDistance);
       camera.lookAt(0, 0, 0);
     }
     function render(time) {
@@ -208,23 +216,23 @@ export function create3DRenderer(cv, { G, SHAPES, N, extreme = false }) {
       ndc.set((e.clientX - b.left) / b.width * 2 - 1, 1 - (e.clientY - b.top) / b.height * 2);
       ray.setFromCamera(ndc, camera);
       if (!ray.ray.intersectPlane(zPlane, hit)) return null;
-      const c = Math.floor(hit.x + 4), r = Math.floor(4 - hit.y);
-      return r >= 0 && c >= 0 && r < N && c < N ? { r, c } : null;
+      const c = Math.floor(hit.x + cols / 2), r = Math.floor(rows / 2 - hit.y);
+      return r >= 0 && c >= 0 && r < rows && c < cols ? { r, c } : null;
     }
 
     const v3 = new THREE.Vector3();
     function project(col, row) {
-      v3.set(col - 3.5, 3.5 - row, 0.5).project(camera);
+      v3.set(col - midX, midY - row, 0.5).project(camera);
       return { x: (v3.x + 1) / 2, y: (1 - v3.y) / 2 };
     }
     const room = new RoomEnvironment(), generator = new THREE.PMREMGenerator(renderer);
     environmentTarget = generator.fromScene(room, 0.04);
     scene.environment = environmentTarget.texture;
     generator.dispose(); room.dispose();
-    const rt = new THREE.WebGLRenderTarget(size, size, { type: THREE.HalfFloatType, samples: 4 });
+    const rt = new THREE.WebGLRenderTarget(width, height, { type: THREE.HalfFloatType, samples: 4 });
     composer = new EffectComposer(renderer, rt);
     composer.addPass(new RenderPass(scene, camera));
-    const bloom = new UnrealBloomPass(new THREE.Vector2(size, size), extreme ? 1.05 : 0.6, extreme ? 0.55 : 0.5, extreme ? 1.25 : 1.0);
+    const bloom = new UnrealBloomPass(new THREE.Vector2(width, height), extreme ? 1.05 : 0.6, extreme ? 0.55 : 0.5, extreme ? 1.25 : 1.0);
     composer.addPass(bloom);
     if (extreme) {
       prismPass = new ShaderPass({
@@ -248,10 +256,14 @@ export function create3DRenderer(cv, { G, SHAPES, N, extreme = false }) {
       kind: 'webgl', quality: extreme ? 'extreme' : 'fancy', engine: renderer,
       get frames() { return frames; },
       render, project, cellAt,
-      resize(px, ratio) {
-        size = px;
-        renderer.setPixelRatio(ratio); renderer.setSize(size, size, false);
-        composer.setPixelRatio(ratio); composer.setSize(size, size);
+      resize(pxWidth, pxHeight, ratio) {
+        width = pxWidth; height = pxHeight; updateBoard();
+        camera.aspect = width / height;
+        cameraDistance = Math.max(rows + BOARD_PADDING, (cols + BOARD_PADDING) / camera.aspect) / (2 * Math.tan(THREE.MathUtils.degToRad(17.5)));
+        camera.far = cameraDistance + 100; camera.updateProjectionMatrix();
+        flashMesh.scale.set(cols + 4, rows + 4, 1);
+        renderer.setPixelRatio(ratio); renderer.setSize(width, height, false);
+        composer.setPixelRatio(ratio); composer.setSize(width, height);
       },
       dispose() {
         composer.passes.forEach(pass => pass.dispose()); composer.dispose();

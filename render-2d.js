@@ -1,23 +1,27 @@
+import { BOARD_PADDING } from './board-layout.js';
+
 // Cached sprites keep the touch-device renderer independent of WebGL and Three.js.
-export function createCanvasRenderer(canvas, { G, SHAPES, N, drawIcon }) {
+export function createCanvasRenderer(canvas, { G, SHAPES, drawIcon }) {
   const ctx = canvas.getContext('2d', { alpha: false });
   const background = document.createElement('canvas');
-  let size = 0, cell = 0, inset = 0, frames = 0, sprites = [];
+  let width = 0, height = 0, rows = 0, cols = 0, cell = 0, insetX = 0, insetY = 0, frames = 0, sprites = [];
   let lastGrid = null, lastSelection = null, lastHint = null, hadEffects = false;
   const previous = [];
-  const at = (col, row) => ({ x: inset + (col + 0.5) * cell, y: inset + (row + 0.5) * cell });
+  const at = (col, row) => ({ x: insetX + (col + 0.5) * cell, y: insetY + (row + 0.5) * cell });
   const sameCell = (a, b) => a && a.r === b.r && a.c === b.c;
 
-  function resize(px) {
-    if (size === px) return;
-    size = px; cell = size / (N + 0.4); inset = (size - cell * N) / 2;
-    canvas.width = canvas.height = background.width = background.height = size;
+  function resize(pxWidth, pxHeight) {
+    if (width === pxWidth && height === pxHeight && rows === G.rows && cols === G.cols) return;
+    width = pxWidth; height = pxHeight; rows = G.rows; cols = G.cols;
+    cell = Math.min(width / (cols + BOARD_PADDING), height / (rows + BOARD_PADDING));
+    insetX = (width - cell * cols) / 2; insetY = (height - cell * rows) / 2;
+    canvas.width = background.width = width; canvas.height = background.height = height;
     const bg = background.getContext('2d');
-    bg.fillStyle = '#140a2e'; bg.fillRect(0, 0, size, size);
-    for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+    bg.fillStyle = '#140a2e'; bg.fillRect(0, 0, width, height);
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
       bg.fillStyle = (r + c) % 2 ? '#211541' : '#2a1c50';
       bg.beginPath();
-      const x = inset + c * cell + 2, y = inset + r * cell + 2, side = cell - 4;
+      const x = insetX + c * cell + 2, y = insetY + r * cell + 2, side = cell - 4;
       if (bg.roundRect) bg.roundRect(x, y, side, side, cell * 0.12);
       else bg.rect(x, y, side, side);
       bg.fill();
@@ -99,9 +103,9 @@ export function createCanvasRenderer(canvas, { G, SHAPES, N, drawIcon }) {
     }
     for (const b of G.beams) {
       const point = at(b.c, b.r); ctx.fillStyle = b.color; ctx.globalAlpha = b.life;
-      const width = cell * (0.1 + b.life * 0.3);
-      if (b.dir === 'h') ctx.fillRect(0, point.y - width / 2, size, width);
-      else ctx.fillRect(point.x - width / 2, 0, width, size);
+      const thickness = cell * (0.1 + b.life * 0.3);
+      if (b.dir === 'h') ctx.fillRect(0, point.y - thickness / 2, width, thickness);
+      else ctx.fillRect(point.x - thickness / 2, 0, thickness, height);
     }
     for (const b of G.blasts) {
       const point = at(b.c, b.r); ctx.strokeStyle = b.color; ctx.globalAlpha = b.life;
@@ -109,23 +113,23 @@ export function createCanvasRenderer(canvas, { G, SHAPES, N, drawIcon }) {
       ctx.arc(point.x, point.y, b.size * cell * (0.2 + 0.8 * (1 - b.life * b.life)), 0, Math.PI * 2); ctx.stroke();
     }
     for (const q of G.parts) {
-      const point = at(q.x + 3.5, 3.5 - q.y), side = Math.max(1, cell * 0.055 * q.life);
+      const point = at(q.x + (cols - 1) / 2, (rows - 1) / 2 - q.y), side = Math.max(1, cell * 0.055 * q.life);
       ctx.fillStyle = q.color; ctx.globalAlpha = Math.max(0, q.life);
       ctx.fillRect(point.x - side / 2, point.y - side / 2, side, side);
     }
     ctx.restore();
-    if (G.flash) { ctx.fillStyle = G.flashColor; ctx.globalAlpha = G.flash * 0.4; ctx.fillRect(0, 0, size, size); }
+    if (G.flash) { ctx.fillStyle = G.flashColor; ctx.globalAlpha = G.flash * 0.4; ctx.fillRect(0, 0, width, height); }
     ctx.globalAlpha = 1;
   }
 
   return {
     kind: 'canvas', quality: 'smooth', get frames() { return frames; }, resize, render,
-    project(col, row) { const point = at(col, row); return { x: point.x / size, y: point.y / size }; },
+    project(col, row) { const point = at(col, row); return { x: point.x / width, y: point.y / height }; },
     cellAt(e) {
       const box = canvas.getBoundingClientRect();
-      const c = Math.floor(((e.clientX - box.left) * size / box.width - inset) / cell);
-      const r = Math.floor(((e.clientY - box.top) * size / box.height - inset) / cell);
-      return r >= 0 && c >= 0 && r < N && c < N ? { r, c } : null;
+      const c = Math.floor(((e.clientX - box.left) * width / box.width - insetX) / cell);
+      const r = Math.floor(((e.clientY - box.top) * height / box.height - insetY) / cell);
+      return r >= 0 && c >= 0 && r < rows && c < cols ? { r, c } : null;
     },
     dispose() { sprites = []; previous.length = 0; background.width = background.height = 0; },
   };

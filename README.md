@@ -24,6 +24,12 @@ There is no build step. Serve the folder with any static web server and open it.
 
 On HTTPS (or localhost), the service worker caches the game and all rendering modules on the first visit. Once installation finishes, it can be reopened offline.
 
+## Board layouts
+
+Auto-fit is the default: it expands the 8×8 board along the available screen axis, up to 8×16 or 16×8, while keeping square tiles. The board uses the available play area, and landscape screens put the HUD beside it. The installed app supports both orientations. Settings → Board also offers Classic 8×8, Tall 8×12, and Wide 12×8 (columns × rows).
+
+Dimensions are chosen when a level starts and stay fixed for that run. Rotating the screen resizes the current board without rearranging pieces; the next run fits the new orientation. Board preferences and existing progress are saved. Level goals and move limits stay the same.
+
 ## Graphics
 
 Fancy is the default graphics mode and keeps the original shiny 3D renderer. Extreme adds much stronger bloom, animated RGB fringes, brighter power-ups, larger particle bursts, and extra screen shake. Smooth uses the lightweight renderer described below. Choose any mode under Settings → Graphics.

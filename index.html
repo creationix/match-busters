@@ -22,7 +22,7 @@
   body {
     background: radial-gradient(circle at 50% 0%, var(--bg1), var(--bg2) 75%);
     color: var(--text); font-family: system-ui, "Segoe UI", Roboto, sans-serif;
-    overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none;
+    overflow: hidden; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;
     position: fixed; top: 0; left: 0; width: 100%; height: 100%; overscroll-behavior: none;
     --sat: env(safe-area-inset-top, 0px); --sab: env(safe-area-inset-bottom, 0px); --sal: env(safe-area-inset-left, 0px); --sar: env(safe-area-inset-right, 0px);
   }
@@ -31,7 +31,7 @@
   @media (display-mode: standalone) { body { height: 100vh; } }
   #game { height: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;
     padding: calc(10px + var(--sat)) calc(10px + var(--sar)) calc(10px + var(--sab)) calc(10px + var(--sal)); }
-  #hud { width: 100%; max-width: 560px; }
+  #hud { width: 100%; max-width: 900px; }
   #hudTop { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   #hudTop .title { flex: 1; min-width: 0; }
   #lvName { font-weight: 800; font-size: 17px; }
@@ -47,13 +47,14 @@
   @keyframes bump { 40% { transform: scale(1.25); color: var(--accent); } }
   #bar { height: 8px; border-radius: 4px; background: var(--panel); margin-top: 8px; overflow: hidden; }
   #barFill { height: 100%; width: 0; background: linear-gradient(90deg, #ffb347, var(--accent)); border-radius: 4px; transition: width .25s; box-shadow: 0 0 12px var(--accent); }
-  #boardWrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; }  /* phones held sideways: HUD moves beside the board so the board keeps the full height */
-  @media (orientation: landscape) and (max-height: 540px) {
+  #boardWrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; min-width: 0; }
+  /* A side HUD leaves the whole screen height for wide boards. */
+  @media (orientation: landscape) {
     #game { flex-direction: row; align-items: center; justify-content: center; gap: 14px; }
-    #hud { width: 220px; flex: none; }
+    #hud { width: clamp(168px, 20vw, 240px); flex: none; }
     #stats { grid-template-columns: 1fr; gap: 6px; }
     .stat { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; }
-    #boardWrap { flex: 0 1 auto; width: auto; height: 100%; aspect-ratio: 1; max-width: calc(100% - 234px); }
+    #boardWrap { flex: 1; width: 0; height: 100%; }
   }
   #stage { position: relative; line-height: 0; }
   #board { display: block; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.5), 0 0 0 2px rgba(255,255,255,.07), 0 0 60px rgba(120,80,255,.25); cursor: pointer; touch-action: none; }
@@ -66,12 +67,12 @@
   #toast.show { animation: toast .9s ease-out; }
   @keyframes toast { 0% { opacity: 0; transform: translate(-50%,-50%) scale(.4) rotate(-6deg); } 20% { opacity: 1; transform: translate(-50%,-50%) scale(1.2) rotate(2deg); } 70% { opacity: 1; transform: translate(-50%,-60%) scale(1); } 100% { opacity: 0; transform: translate(-50%,-90%) scale(1); } }
 
-  .screen { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; z-index: 10; overflow-y: auto;
+  .screen { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; z-index: 10; overflow-y: auto; touch-action: pan-y;
     padding: calc(16px + var(--sat)) calc(16px + var(--sar)) calc(16px + var(--sab)) calc(16px + var(--sal));
     background: radial-gradient(circle at 50% 0%, var(--bg1), var(--bg2) 75%); }
   .screen.dim { background: rgba(10,4,26,.78); backdrop-filter: blur(3px); }
   .screen.show { display: flex; }
-  .card { width: 100%; max-width: 380px; text-align: center; display: flex; flex-direction: column; gap: 12px; }
+  .card { width: 100%; max-width: 380px; margin: auto; text-align: center; display: flex; flex-direction: column; gap: 12px; }
   .dim .card { background: var(--panel); border-radius: 20px; padding: 24px; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
   h1 { font-size: 46px; line-height: 1; margin: 0 0 4px; font-weight: 900; letter-spacing: -.02em;
     background: linear-gradient(180deg, #fff, var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
@@ -94,7 +95,7 @@
   .toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: left .15s; }
   .toggle.on { background: #3ecf5e; }
   .toggle.on::after { left: 29px; }
-  #graphicsMode { font: inherit; color: var(--text); background: var(--panel); border: 1px solid #79679f; border-radius: 8px; padding: 6px 10px; }
+  .row select { font: inherit; color: var(--text); background: var(--panel); border: 1px solid #79679f; border-radius: 8px; padding: 6px 10px; }
   #stars { font-size: 46px; letter-spacing: 6px; color: #5a4a8a; }
   #stars .on { color: var(--accent); text-shadow: 0 0 16px rgba(255,216,74,.7); }
   #ver { position: absolute; left: 0; right: 0; bottom: calc(6px + var(--sab)); text-align: center; font-size: 11px; color: var(--muted); opacity: .6; pointer-events: none; }
@@ -120,7 +121,7 @@
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
 </div>
 
-<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 i</div><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 j</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Match Busters</h1>
   <p class="sub">Swap. Match three. Bust them all.</p>
@@ -139,6 +140,8 @@
   <div class="row">Sound effects <button class="toggle" id="tSound"></button></div>
   <div class="row">Music <button class="toggle" id="tMusic"></button></div>
   <div class="row"><label for="graphicsMode">Graphics</label><select id="graphicsMode"><option value="smooth">Smooth</option><option value="fancy">Fancy</option><option value="extreme">Extreme</option></select></div>
+  <div class="row"><label for="boardLayout">Board</label><select id="boardLayout"><option value="auto">Auto-fit</option><option value="classic">Classic 8×8</option><option value="tall">Tall 8×12</option><option value="wide">Wide 12×8</option></select></div>
+  <p class="sub">Board layout is chosen when a level starts.</p>
   <button class="big alt" data-go="menu">Back</button>
   <button class="link" id="resetBtn">Reset progress</button>
 </div></div>
@@ -175,9 +178,10 @@
 import { createCanvasRenderer } from './render-2d.js';
 import { createFrameRateMonitor } from './frame-rate.js';
 import { createMusicPlayer } from './music.js';
+import { chooseBoardShape, fitBoard } from './board-layout.js';
 
 window.__mbStarting = true;
-const N = 8, TAU = Math.PI * 2, PMAX = 2000;
+const TAU = Math.PI * 2, PMAX = 2000;
 // One shape = one colour, always.
 const SHAPES = [
   { name: 'Circle',   plural: 'green circles',    color: '#3ecf5e', dark: '#17803a', light: '#b4f8c2' },
@@ -209,7 +213,7 @@ const fmt = n => n.toLocaleString('en-US');
 
 // ---------- persistence ----------
 // Keep the shiny renderer by default; offer the sprite renderer if play stays slow.
-let save = { stars: [], sound: true, music: true, smooth: false, extreme: false, keep3D: false };
+let save = { stars: [], sound: true, music: true, smooth: false, extreme: false, keep3D: false, boardLayout: 'auto' };
 try { Object.assign(save, JSON.parse(localStorage.getItem('matchbusters') || '{}')); } catch (e) {}
 function persist() { try { localStorage.setItem('matchbusters', JSON.stringify(save)); } catch (e) {} }
 
@@ -324,8 +328,8 @@ function iconCanvas(t, px) {
 
 // ---------- game state ----------
 let cv = $('board');
-let size = 400;
-const G = { active: false, paused: false, busy: false, ended: false, timeUp: false, gen: 0, grid: null, level: 0, lv: null,
+let cellSize = 400 / 8;
+const G = { active: false, paused: false, busy: false, ended: false, timeUp: false, gen: 0, grid: null, rows: 8, cols: 8, level: 0, lv: null,
   score: 0, moves: 0, timeLeft: 0, collected: [0, 0, 0, 0, 0], sel: null, drag: null, hint: null, idle: 0,
   dying: [], parts: [], beams: [], blasts: [], timers: [], waiters: [], flash: 0, flashColor: '#ffffff', shake: 0 };
 
@@ -339,9 +343,9 @@ function wouldMatch(g, r, c, t) {
 function newBoard() {
   do {
     G.grid = [];
-    for (let r = 0; r < N; r++) {
-      G.grid.push(new Array(N).fill(null));
-      for (let c = 0; c < N; c++) {
+    for (let r = 0; r < G.rows; r++) {
+      G.grid.push(new Array(G.cols).fill(null));
+      for (let c = 0; c < G.cols; c++) {
         let t; do { t = rnd(SHAPES.length); } while (wouldMatch(G.grid, r, c, t));
         G.grid[r][c] = mk(t, r, c);
       }
@@ -350,17 +354,17 @@ function newBoard() {
 }
 function lineLen(g, r, c, dr, dc) {
   const t = g[r][c].t; let n = 1;
-  for (let i = 1; r + dr * i >= 0 && r + dr * i < N && c + dc * i >= 0 && c + dc * i < N && g[r + dr * i][c + dc * i].t === t; i++) n++;
-  for (let i = 1; r - dr * i >= 0 && r - dr * i < N && c - dc * i >= 0 && c - dc * i < N && g[r - dr * i][c - dc * i].t === t; i++) n++;
+  for (let i = 1; r + dr * i >= 0 && r + dr * i < G.rows && c + dc * i >= 0 && c + dc * i < G.cols && g[r + dr * i][c + dc * i].t === t; i++) n++;
+  for (let i = 1; r - dr * i >= 0 && r - dr * i < G.rows && c - dc * i >= 0 && c - dc * i < G.cols && g[r - dr * i][c - dc * i].t === t; i++) n++;
   return n;
 }
 const formsMatch = (g, r, c) => lineLen(g, r, c, 0, 1) >= 3 || lineLen(g, r, c, 1, 0) >= 3;
 function findMove() {
   const g = G.grid;
-  for (let r = 0; r < N; r++) for (let c = 0; c < N; c++) {
+  for (let r = 0; r < G.rows; r++) for (let c = 0; c < G.cols; c++) {
     for (const [dr, dc] of [[0, 1], [1, 0]]) {
       const r2 = r + dr, c2 = c + dc;
-      if (r2 >= N || c2 >= N) continue;
+      if (r2 >= G.rows || c2 >= G.cols) continue;
       const a = g[r][c], b = g[r2][c2];
       g[r][c] = b; g[r2][c2] = a;
       const ok = formsMatch(g, r, c) || formsMatch(g, r2, c2);
@@ -373,16 +377,16 @@ function findMove() {
 const hasMoves = () => !!findMove();
 function findMatches() {
   const g = G.grid, runs = [];
-  for (let r = 0; r < N; r++) for (let c = 0; c < N;) {
+  for (let r = 0; r < G.rows; r++) for (let c = 0; c < G.cols;) {
     const t = g[r][c].t; let e = c + 1;
-    while (e < N && g[r][e].t === t) e++;
-    if (e - c >= 3) { const cells = []; for (let i = c; i < e; i++) cells.push(r * N + i); runs.push({ cells, dir: 'h', t }); }
+    while (e < G.cols && g[r][e].t === t) e++;
+    if (e - c >= 3) { const cells = []; for (let i = c; i < e; i++) cells.push(r * G.cols + i); runs.push({ cells, dir: 'h', t }); }
     c = e;
   }
-  for (let c = 0; c < N; c++) for (let r = 0; r < N;) {
+  for (let c = 0; c < G.cols; c++) for (let r = 0; r < G.rows;) {
     const t = g[r][c].t; let e = r + 1;
-    while (e < N && g[e][c].t === t) e++;
-    if (e - r >= 3) { const cells = []; for (let i = r; i < e; i++) cells.push(i * N + c); runs.push({ cells, dir: 'v', t }); }
+    while (e < G.rows && g[e][c].t === t) e++;
+    if (e - r >= 3) { const cells = []; for (let i = r; i < e; i++) cells.push(i * G.cols + c); runs.push({ cells, dir: 'v', t }); }
     r = e;
   }
   const parent = runs.map((_, i) => i);
@@ -425,48 +429,48 @@ function burst(wx, wy, color, n, speed) {
 function clearStep(groups, swapped, combo) {
   const set = new Set(), queue = [], spawns = [], fired = { line: false, bomb: false, color: false, forged: false };
   const add = (r, c) => {
-    if (r < 0 || c < 0 || r >= N || c >= N || !G.grid[r][c]) return;
-    const k = r * N + c; if (!set.has(k)) { set.add(k); queue.push(k); }
+    if (r < 0 || c < 0 || r >= G.rows || c >= G.cols || !G.grid[r][c]) return;
+    const k = r * G.cols + c; if (!set.has(k)) { set.add(k); queue.push(k); }
   };
   for (const g of groups) {
-    for (const k of g.cells) add(k / N | 0, k % N);
+    for (const k of g.cells) add(k / G.cols | 0, k % G.cols);
     if (g.special) spawns.push({ k: pickSpawn(g, swapped), t: g.t, sp: g.special, dir: g.dir });
   }
   let bonus = 0;
   while (queue.length) {
-    const k = queue.shift(), r = k / N | 0, c = k % N, p = G.grid[r][c];
+    const k = queue.shift(), r = k / G.cols | 0, c = k % G.cols, p = G.grid[r][c];
     if (!p.sp) continue;
     bonus += 50; fired[p.sp] = true;
     if (p.sp === 'line') {
-      for (let i = 0; i < N; i++) p.dir === 'h' ? add(r, i) : add(i, c);
+      for (let i = 0; i < (p.dir === 'h' ? G.cols : G.rows); i++) p.dir === 'h' ? add(r, i) : add(i, c);
       G.beams.push({ r, c, dir: p.dir, life: 1, color: SHAPES[p.t].light });
       G.shake = Math.max(G.shake, 0.5);
     } else if (p.sp === 'bomb') {
       for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) add(r + dr, c + dc);
       G.blasts.push({ r, c, life: 1, size: 2.4, color: '#ffd84a', dur: 0.4 });
       G.blasts.push({ r, c, life: 1, size: 1.4, color: '#ffffff', dur: 0.28 });
-      burst(c - 3.5, 3.5 - r, '#ffb347', 40, 7);
+      burst(c - (G.cols - 1) / 2, (G.rows - 1) / 2 - r, '#ffb347', 40, 7);
       G.shake = Math.max(G.shake, 0.8);
     } else {
-      for (let rr = 0; rr < N; rr++) for (let cc = 0; cc < N; cc++) if (G.grid[rr][cc] && G.grid[rr][cc].t === p.t) add(rr, cc);
+      for (let rr = 0; rr < G.rows; rr++) for (let cc = 0; cc < G.cols; cc++) if (G.grid[rr][cc] && G.grid[rr][cc].t === p.t) add(rr, cc);
       G.flash = 1; G.flashColor = SHAPES[p.t].color;
-      G.blasts.push({ r, c, life: 1, size: 7, color: SHAPES[p.t].light, dur: 0.6 });
+      G.blasts.push({ r, c, life: 1, size: Math.max(G.rows, G.cols) - 1, color: SHAPES[p.t].light, dur: 0.6 });
       G.shake = Math.max(G.shake, 1);
     }
   }
   let sr = 0, sc = 0;
   for (const k of set) {
-    const r = k / N | 0, c = k % N, p = G.grid[r][c];
+    const r = k / G.cols | 0, c = k % G.cols, p = G.grid[r][c];
     G.collected[p.t]++; sr += r; sc += c;
     G.dying.push({ p, life: 1 });
     G.blasts.push({ r, c, life: 1, size: 0.75, color: SHAPES[p.t].color, dur: 0.3 });
-    burst(c - 3.5, 3.5 - r, SHAPES[p.t].color, 9, 3.2);
+    burst(c - (G.cols - 1) / 2, (G.rows - 1) / 2 - r, SHAPES[p.t].color, 9, 3.2);
     G.grid[r][c] = null;
   }
   for (const s of spawns) {
-    const r = s.k / N | 0, c = s.k % N, np = mk(s.t, r, c, s.sp, s.dir);
+    const r = s.k / G.cols | 0, c = s.k % G.cols, np = mk(s.t, r, c, s.sp, s.dir);
     np.born = 0; G.grid[r][c] = np; fired.forged = true;
-    burst(c - 3.5, 3.5 - r, '#ffffff', 16, 2.5);
+    burst(c - (G.cols - 1) / 2, (G.rows - 1) / 2 - r, '#ffffff', 16, 2.5);
   }
   const pts = (set.size * 10 + bonus) * combo;
   G.score += pts;
@@ -474,9 +478,9 @@ function clearStep(groups, swapped, combo) {
   return fired;
 }
 function gravity() {
-  for (let c = 0; c < N; c++) {
-    let w = N - 1;
-    for (let r = N - 1; r >= 0; r--) {
+  for (let c = 0; c < G.cols; c++) {
+    let w = G.rows - 1;
+    for (let r = G.rows - 1; r >= 0; r--) {
       const p = G.grid[r][c];
       if (!p) continue;
       if (r !== w) { G.grid[w][c] = p; G.grid[r][c] = null; p.r = w; }
@@ -490,7 +494,7 @@ function shuffleBoard() {
   const ps = G.grid.flat();
   for (let tries = 0; tries < 300; tries++) {
     for (let i = ps.length - 1; i > 0; i--) { const j = rnd(i + 1); [ps[i], ps[j]] = [ps[j], ps[i]]; }
-    ps.forEach((p, i) => { p.r = i / N | 0; p.c = i % N; G.grid[p.r][p.c] = p; });
+    ps.forEach((p, i) => { p.r = i / G.cols | 0; p.c = i % G.cols; G.grid[p.r][p.c] = p; });
     if (!findMatches().length && hasMoves()) return;
   }
   newBoard();
@@ -514,7 +518,7 @@ async function trySwap(a, b) {
   }
   if (G.lv.moves) G.moves--;
   hud();
-  let swapped = [b.r * N + b.c, a.r * N + a.c], combo = 0;
+  let swapped = [b.r * G.cols + b.c, a.r * G.cols + a.c], combo = 0;
   for (;;) {
     const groups = findMatches();
     if (!groups.length) break;
@@ -559,7 +563,7 @@ function endLevel(win) {
     else stars = G.score >= lv.goal * 1.8 ? 3 : G.score >= lv.goal * 1.35 ? 2 : 1;
     save.stars[G.level] = Math.max(save.stars[G.level] || 0, stars); persist();
     // victory confetti
-    for (let i = 0; i < 12; i++) burst((Math.random() - 0.5) * 7, (Math.random() - 0.5) * 7, SHAPES[i % 5].color, 30, 6);
+    for (let i = 0; i < 12; i++) burst((Math.random() - 0.5) * (G.cols - 1), (Math.random() - 0.5) * (G.rows - 1), SHAPES[i % 5].color, 30, 6);
   }
   const gen = G.gen;
   setTimeout(() => {
@@ -635,9 +639,12 @@ function startLevel(i) {
     dying: [], parts: [], beams: [], blasts: [], flash: 0, shake: 0 });
   setMusicCategory(lv.type);
   $('floats').innerHTML = '';
+  show(null); $('lvGoal').textContent = goalText(lv);
+  const wrap = $('boardWrap');
+  Object.assign(G, chooseBoardShape(save.boardLayout, wrap.clientWidth, wrap.clientHeight));
   newBoard();
   // drop the opening board in from above
-  for (const p of G.grid.flat()) p.y = p.r - N - 1 - (N - p.r) * 0.35 - p.c * 0.08;
+  for (const p of G.grid.flat()) p.y = p.r - G.rows - 1 - (G.rows - p.r) * 0.35 - p.c * 0.08;
   $('lvName').textContent = 'Level ' + (i + 1);
   $('lvGoal').textContent = goalText(lv);
   $('sLeftLbl').textContent = lv.time ? 'Time' : 'Moves';
@@ -667,11 +674,13 @@ $('resMenuBtn').onclick = () => { quit(); show('levels'); };
 function syncToggles() {
   $('tSound').classList.toggle('on', save.sound); $('tMusic').classList.toggle('on', save.music);
   $('graphicsMode').value = save.smooth ? 'smooth' : save.extreme ? 'extreme' : 'fancy';
+  $('boardLayout').value = save.boardLayout;
   if (musicPlayer) musicPlayer.setEnabled(save.music);
   syncMusicPlayback();
 }
 $('tSound').onclick = () => { save.sound = !save.sound; persist(); syncToggles(); sfx.pop(1); };
 $('tMusic').onclick = () => { save.music = !save.music; persist(); syncToggles(); };
+$('boardLayout').onchange = () => { save.boardLayout = $('boardLayout').value; persist(); };
 $('graphicsMode').onchange = () => {
   save.smooth = $('graphicsMode').value === 'smooth';
   save.extreme = $('graphicsMode').value === 'extreme';
@@ -707,7 +716,7 @@ function floatText(col, row, text, pts) {
   el.className = 'float'; el.textContent = text;
   el.style.left = Math.min(92, Math.max(8, point.x * 100)) + '%';
   el.style.top = Math.max(6, point.y * 100) + '%';
-  el.style.fontSize = Math.round(size / 28 + Math.min(pts / 30, size / 22)) + 'px';
+  el.style.fontSize = Math.round(cellSize / 3.5 + Math.min(pts / 30, cellSize / 2.75)) + 'px';
   if (pts >= 200) el.style.color = '#ffd84a';
   el.addEventListener('animationend', () => el.remove());
   $('floats').appendChild(el);
@@ -730,12 +739,12 @@ function bindBoardInput() {
   });
   cv.addEventListener('pointermove', e => {
     if (!G.drag || !canInput()) return;
-    const dx = e.clientX - G.drag.x, dy = e.clientY - G.drag.y, th = size / N * 0.35;
+    const dx = e.clientX - G.drag.x, dy = e.clientY - G.drag.y, th = cellSize * 0.35;
     if (Math.max(Math.abs(dx), Math.abs(dy)) < th) return;
     const from = G.drag.cell;
     const to = Math.abs(dx) > Math.abs(dy) ? { r: from.r, c: from.c + Math.sign(dx) } : { r: from.r + Math.sign(dy), c: from.c };
     G.drag = null;
-    if (to.r < 0 || to.c < 0 || to.r >= N || to.c >= N) return;
+    if (to.r < 0 || to.c < 0 || to.r >= G.rows || to.c >= G.cols) return;
     G.sel = null; trySwap(from, to);
   });
   const endDrag = () => { G.drag = null; };
@@ -744,10 +753,13 @@ function bindBoardInput() {
 
 // ---------- loop ----------
 function resize() {
-  const wrap = $('boardWrap'), pr = Math.min(window.devicePixelRatio || 1, save.smooth ? 1 : 2);
-  size = Math.max(160, Math.floor(Math.min(wrap.clientWidth, wrap.clientHeight - 4, 640)));
-  if (graphics) graphics.resize(size, pr);
-  cv.style.width = cv.style.height = size + 'px';
+  const wrap = $('boardWrap');
+  const fitted = fitBoard(G.rows, G.cols, wrap.clientWidth, wrap.clientHeight - 4);
+  cellSize = fitted.cell;
+  // Keep the total pixel workload close to the former Retina square board.
+  const pr = Math.min(window.devicePixelRatio || 1, save.smooth ? 1 : 2, Math.sqrt(1600000 / (fitted.width * fitted.height)));
+  if (graphics) graphics.resize(fitted.width, fitted.height, pr);
+  cv.style.width = fitted.width + 'px'; cv.style.height = fitted.height + 'px';
   if (graphics && G.active) graphics.render(performance.now() / 1000);
 }
 window.addEventListener('resize', resize);
@@ -763,11 +775,11 @@ async function applyGraphics() {
     if (graphics) graphics.dispose();
     // A canvas cannot change context type once a rendering context has been created.
     const next = cv.cloneNode(false); cv.replaceWith(next); cv = next;
-    try { graphics = create(cv, { G, SHAPES, N, drawIcon, extreme: save.extreme }); }
+    try { graphics = create(cv, { G, SHAPES, drawIcon, extreme: save.extreme }); }
     catch (e) {
       save.smooth = true; save.extreme = false; persist(); syncToggles();
       const fallback = cv.cloneNode(false); cv.replaceWith(fallback); cv = fallback;
-      graphics = createCanvasRenderer(cv, { G, SHAPES, N, drawIcon });
+      graphics = createCanvasRenderer(cv, { G, SHAPES, drawIcon });
     }
     bindBoardInput();
     frameRate.reset();
@@ -785,7 +797,7 @@ function update(dt) {
       p.v = Math.min(26, Math.max(p.v, 5) + 50 * dt);
       const st = p.v * dt;
       if (st >= d) { p.x = p.c; p.y = p.r; p.v = 0; } else { p.x += dx / d * st; p.y += dy / d * st; moving = true; }
-    }
+    } else { p.x = p.c; p.y = p.r; p.v = 0; }
     if (p.born < 1) p.born = Math.min(1, p.born + dt * 4.5);
   }
   for (const d of G.dying) d.life -= dt / 0.24;

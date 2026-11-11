@@ -10,9 +10,9 @@ const root = path.resolve(__dirname, '..');
 const prefix = '/match-busters/';
 let browser, server, origin, legacy = false;
 
-// An installed v10 worker and shell, for testing the update path.
+// An installed v11 worker and shell, for testing the update path.
 const legacyWorker = `
-const CACHE = 'match-busters-v10';
+const CACHE = 'match-busters-v11';
 self.addEventListener('install', e => e.waitUntil(
   caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).then(() => self.skipWaiting())
 ));
@@ -71,15 +71,18 @@ test('all imports resolve locally and are precached without import maps', async 
     }
   }
   await checkImports(html, path.join(root, 'index.html'));
-  assert.equal(visited.size, 17);
+  assert.equal(visited.size, 18);
 });
 
 async function newPage(t, options = {}) {
-  const { smooth = true, ...browserOptions } = options;
+  const { smooth = true, layout = 'classic', ...browserOptions } = options;
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true, ...browserOptions });
-  if (smooth !== null) await context.addInitScript(value => {
-    if (!localStorage.getItem('matchbusters')) localStorage.setItem('matchbusters', JSON.stringify({ smooth: value }));
-  }, smooth);
+  await context.addInitScript(({ smooth, layout }) => {
+    const save = JSON.parse(localStorage.getItem('matchbusters') || '{}');
+    if (smooth !== null && !('smooth' in save)) save.smooth = smooth;
+    if (layout !== null && !('boardLayout' in save)) save.boardLayout = layout;
+    localStorage.setItem('matchbusters', JSON.stringify(save));
+  }, { smooth, layout });
   t.after(() => context.close());
   const external = [], errors = [];
   context.on('request', req => {
@@ -109,13 +112,27 @@ async function play(page) {
   assert.equal(await page.locator('#sLeft').textContent(), '19');
 }
 
+async function makeBoardMove(page, drag = false) {
+  const move = await page.evaluate(() => __mb.findMove());
+  const points = await page.evaluate(cells => cells.map(cell => __mb.renderer.project(cell.c, cell.r)), move);
+  const box = await page.locator('#board').boundingBox();
+  const [from, to] = points.map(point => ({ x: box.x + box.width * point.x, y: box.y + box.height * point.y }));
+  const before = await page.evaluate(() => ({ score: __mb.G.score, moves: __mb.G.moves }));
+  if (drag) {
+    await page.mouse.move(from.x, from.y); await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 4 }); await page.mouse.up();
+  } else { await page.mouse.click(from.x, from.y); await page.mouse.click(to.x, to.y); }
+  await page.waitForFunction(score => __mb.G.score > score && !__mb.G.busy, before.score);
+  assert.equal(await page.evaluate(() => __mb.G.moves), before.moves - 1);
+}
+
 test('cold load, a match, and offline reload work under a GitHub Pages subpath', { timeout: 60000 }, async t => {
   const { context, page, external, errors } = await newPage(t);
   await page.goto(origin + prefix);
   await play(page);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v11']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v12']);
   await context.setOffline(true);
   await page.reload();
   await play(page);
@@ -218,14 +235,14 @@ test('music follows pause, resume, and tab visibility without changing the Music
   assert.deepEqual(errors, []);
 });
 
-test('an existing v10 installation updates and then works offline', { timeout: 60000 }, async t => {
+test('an existing v11 installation updates and then works offline', { timeout: 60000 }, async t => {
   legacy = true;
   t.after(() => { legacy = false; });
   const { context, page, external, errors } = await newPage(t);
   await page.goto(origin + prefix);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v10']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v11']);
   legacy = false;
   await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.getRegistration();
@@ -233,7 +250,7 @@ test('an existing v10 installation updates and then works offline', { timeout: 6
     await registration.update();
     await changed;
   });
-  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v11');
+  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v12');
   await context.setOffline(true);
   await page.reload();
   await play(page);
@@ -490,4 +507,120 @@ test('Extreme graphics render, persist, and switch back to the original Fancy mo
   assert.equal(await page.evaluate(() => __mb.save.extreme), false);
   assert.deepEqual(shaderErrors, []);
   assert.deepEqual(errors, []);
+});
+
+test('auto-fit fills phone, tablet, and laptop screens with larger square-tile boards', { timeout: 60000 }, async t => {
+  for (const [name, width, height] of [['phone portrait', 390, 844], ['phone landscape', 844, 390], ['tablet portrait', 768, 1024], ['laptop', 1366, 768]]) {
+    await t.test(name, async t => {
+      const { page, errors } = await newPage(t, { layout: null, viewport: { width, height } });
+      await page.goto(origin + prefix);
+      await page.waitForFunction(() => !!window.__mb);
+      await page.getByRole('button', { name: 'Play', exact: true }).click(); await page.locator('.lvBtn').first().click();
+      await page.waitForFunction(() => __mb.G.grid.flat().every(p => p.y === p.r));
+      const layout = await page.evaluate(() => {
+        const canvas = document.getElementById('board').getBoundingClientRect();
+        const wrap = document.getElementById('boardWrap').getBoundingClientRect();
+        const a = __mb.renderer.project(0, 0), b = __mb.renderer.project(1, 0), c = __mb.renderer.project(0, 1);
+        return { rows: __mb.G.rows, cols: __mb.G.cols, cells: __mb.G.grid.flat().length,
+          coverage: [canvas.width / wrap.width, canvas.height / wrap.height],
+          xStep: (b.x - a.x) * canvas.width, yStep: (c.y - a.y) * canvas.height,
+          inside: canvas.left >= wrap.left - 1 && canvas.right <= wrap.right + 1 && canvas.top >= wrap.top - 1 && canvas.bottom <= wrap.bottom + 1 };
+      });
+      assert.ok(layout.cells > 64, JSON.stringify(layout));
+      assert.ok(layout.coverage.every(value => value > 0.88), JSON.stringify(layout));
+      assert.ok(layout.inside);
+      assert.ok(Math.abs(layout.xStep - layout.yStep) < 1);
+      await makeBoardMove(page);
+      assert.deepEqual(errors, []);
+    });
+  }
+});
+
+test('rotating preserves an active board, and retrying auto-fits the new orientation', { timeout: 60000 }, async t => {
+  const { page, errors } = await newPage(t, { layout: 'auto' });
+  await page.goto(origin + prefix); await page.waitForFunction(() => !!window.__mb);
+  await page.getByRole('button', { name: 'Play', exact: true }).click(); await page.locator('.lvBtn').first().click();
+  await page.waitForFunction(() => __mb.G.grid.flat().every(p => p.y === p.r));
+  await makeBoardMove(page);
+  const before = await page.evaluate(() => ({ rows: __mb.G.rows, cols: __mb.G.cols, grid: __mb.G.grid.map(row => row.map(p => p.t)), score: __mb.G.score }));
+  await page.setViewportSize({ width: 844, height: 390 });
+  assert.deepEqual(await page.evaluate(() => ({ rows: __mb.G.rows, cols: __mb.G.cols, grid: __mb.G.grid.map(row => row.map(p => p.t)), score: __mb.G.score })), before);
+  await makeBoardMove(page, true);
+  await page.locator('#pauseBtn').click(); await page.getByRole('button', { name: 'Restart', exact: true }).click();
+  assert.equal(await page.evaluate(() => __mb.G.rows), 8);
+  assert.ok(await page.evaluate(() => __mb.G.cols > 8));
+  assert.deepEqual(errors, []);
+});
+
+test('rectangular boards clear full edge rows and columns, forge specials, and refill correctly', { timeout: 60000 }, async t => {
+  const { page, errors } = await newPage(t);
+  await page.goto(origin + prefix); await page.waitForFunction(() => !!window.__mb);
+  for (const layout of ['tall', 'wide']) {
+    const result = await page.evaluate(layout => {
+      const mb = __mb, g = mb.G; mb.save.boardLayout = layout; mb.startLevel(0); mb.setPaused(true);
+      const reset = () => {
+        g.collected.fill(0); g.dying = []; g.parts = []; g.beams = []; g.blasts = [];
+        g.grid = Array.from({ length: g.rows }, (_, r) => Array.from({ length: g.cols }, (_, c) => mb.mk((r + c) % 5, r, c)));
+      };
+      reset(); const bottom = g.rows - 1, right = g.cols - 1;
+      for (let c = g.cols - 4; c < g.cols; c++) g.grid[bottom][c].t = 0;
+      g.grid[bottom][g.cols - 5].t = 1;
+      const matches = mb.findMatches(), spawn = bottom * g.cols + right;
+      mb.clearStep(matches, [spawn], 1);
+      const forged = g.grid[bottom][right] && g.grid[bottom][right].sp === 'line';
+      mb.gravity(); for (let i = 0; i < 120; i++) mb.update(1 / 60);
+      mb.render(0);
+      const refilled = g.grid.every((row, r) => row.length === g.cols && row.every((p, c) => p && p.r === r && p.c === c && p.y === r));
+      reset(); g.grid[bottom][right].sp = 'line'; g.grid[bottom][right].dir = 'h';
+      mb.clearStep([{ cells: [spawn], special: null }], [], 1); mb.render(0);
+      const rowCleared = g.grid[bottom].every(p => p === null), rowCount = g.collected.reduce((a, b) => a + b, 0);
+      reset(); g.grid[bottom][right].sp = 'line'; g.grid[bottom][right].dir = 'v';
+      mb.clearStep([{ cells: [spawn], special: null }], [], 1); mb.render(0);
+      const columnCleared = g.grid.every(row => row[right] === null), columnCount = g.collected.reduce((a, b) => a + b, 0);
+      reset(); g.grid[bottom][right].t = 2; g.grid[bottom][right].sp = 'color';
+      const colorCount = g.grid.flat().filter(p => p.t === 2).length;
+      mb.clearStep([{ cells: [spawn], special: null }], [], 1); mb.render(0);
+      return { rows: g.rows, cols: g.cols, forged, refilled, rowCleared, rowCount, columnCleared, columnCount,
+        colorCount, colorsCleared: g.collected[2], colorRemains: g.grid.flat().some(p => p && p.t === 2) };
+    }, layout);
+    assert.ok(result.forged && result.refilled && result.rowCleared && result.columnCleared, JSON.stringify(result));
+    assert.equal(result.rowCount, result.cols); assert.equal(result.columnCount, result.rows);
+    assert.equal(result.colorsCleared, result.colorCount); assert.equal(result.colorRemains, false);
+  }
+  assert.deepEqual(errors, []);
+});
+
+test('Tall and Wide preferences persist, and both 3D modes fit and hit-test rectangular edges', { timeout: 60000 }, async t => {
+  for (const [layout, quality, width, height, rows, cols] of [['tall', 'fancy', 390, 844, 12, 8], ['wide', 'extreme', 844, 390, 8, 12]]) {
+    await t.test(`${quality} ${layout}`, async t => {
+      const { page, errors } = await newPage(t, { viewport: { width, height } });
+      const shaderErrors = [];
+      page.on('console', msg => { if (msg.type() === 'error' && /Shader Error|VALIDATE_STATUS|GL_INVALID/i.test(msg.text())) shaderErrors.push(msg.text()); });
+      await page.goto(origin + prefix); await page.waitForFunction(() => !!window.__mb);
+      await page.getByRole('button', { name: 'Settings', exact: true }).click();
+      await page.getByLabel('Board', { exact: true }).selectOption(layout);
+      await page.getByLabel('Graphics', { exact: true }).selectOption(quality);
+      await page.waitForFunction(quality => __mb.renderer.quality === quality, quality);
+      await page.evaluate(() => { __mb.save.keep3D = true; });
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+      await page.getByRole('button', { name: 'Play', exact: true }).click(); await page.locator('.lvBtn').first().click();
+      await page.waitForFunction(() => __mb.G.grid.flat().every(p => p.y === p.r));
+      assert.deepEqual(await page.evaluate(() => [__mb.G.rows, __mb.G.cols]), [rows, cols]);
+      const hits = await page.evaluate(() => {
+        const g = __mb.G, canvas = document.getElementById('board').getBoundingClientRect();
+        return [[0, 0], [0, g.cols - 1], [g.rows - 1, 0], [g.rows - 1, g.cols - 1]].map(([r, c]) => {
+          const point = __mb.renderer.project(c, r);
+          const hit = __mb.renderer.cellAt({ clientX: canvas.left + point.x * canvas.width, clientY: canvas.top + point.y * canvas.height });
+          return { expected: { r, c }, hit, inside: point.x > 0 && point.x < 1 && point.y > 0 && point.y < 1 };
+        });
+      });
+      for (const result of hits) { assert.ok(result.inside); assert.deepEqual(result.hit, result.expected); }
+      await makeBoardMove(page);
+      await page.screenshot({ path: `/tmp/match-${quality}-${layout}.png` });
+      await page.reload(); await page.waitForFunction(() => !!window.__mb);
+      await page.getByRole('button', { name: 'Settings', exact: true }).click();
+      assert.equal(await page.getByLabel('Board', { exact: true }).inputValue(), layout);
+      assert.deepEqual(shaderErrors, []); assert.deepEqual(errors, []);
+    });
+  }
 });
