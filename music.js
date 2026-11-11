@@ -178,7 +178,7 @@ export function createMusicPlayer(context, destination) {
       if (nextTime < now) nextTime = now + 0.05; // Never queue a backlog after a stalled tab.
       while (nextTime < now + 0.2) {
         nextTime += schedule(nextTime); step++;
-        if (step === selected.bars.length * selected.beats * 2) choose(nextTime);
+        if (step === selected.bars.length * selected.beats * 2) step = 0;
       }
     },
     get state() { return { title: selected && selected.title, category, bpm: selected && selected.bpm, enabled, paused, step }; },

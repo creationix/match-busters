@@ -42,7 +42,7 @@ test('nine distinct compositions give each level type its own musical pace', asy
   assert.ok(SONGS.filter(song => song.category === 'collect').every(song => song.bars.flat().includes(null)));
 });
 
-test('long sessions rotate within the level playlist without immediate repeats', async () => {
+test('a run loops one song indefinitely; starting another run can choose the next track', async () => {
   const { createMusicPlayer } = await import('../music.js');
   const { context, destination } = audioClock();
   const player = createMusicPlayer(context, destination), titles = [];
@@ -51,10 +51,10 @@ test('long sessions rotate within the level playlist without immediate repeats',
     context.advance(t); player.tick();
     if (titles.at(-1) !== player.state.title) titles.push(player.state.title);
   }
-  assert.ok(titles.length >= 4);
-  assert.equal(new Set(titles.slice(0, 3)).size, 3);
-  assert.equal(titles[0], titles[3]);
+  assert.equal(titles.length, 1);
   assert.equal(player.state.category, 'timed');
+  player.setCategory('timed');
+  assert.notEqual(player.state.title, titles[0]);
   player.setCategory('collect');
   const first = player.state.title;
   player.setCategory('collect');

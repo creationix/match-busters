@@ -10,9 +10,9 @@ const root = path.resolve(__dirname, '..');
 const prefix = '/match-busters/';
 let browser, server, origin, legacy = false;
 
-// An installed v9 worker and shell, for testing the update path.
+// An installed v10 worker and shell, for testing the update path.
 const legacyWorker = `
-const CACHE = 'match-busters-v9';
+const CACHE = 'match-busters-v10';
 self.addEventListener('install', e => e.waitUntil(
   caches.open(CACHE).then(c => c.addAll(['./', './index.html'])).then(() => self.skipWaiting())
 ));
@@ -115,7 +115,7 @@ test('cold load, a match, and offline reload work under a GitHub Pages subpath',
   await play(page);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v10']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v11']);
   await context.setOffline(true);
   await page.reload();
   await play(page);
@@ -218,14 +218,14 @@ test('music follows pause, resume, and tab visibility without changing the Music
   assert.deepEqual(errors, []);
 });
 
-test('an existing v9 installation updates and then works offline', { timeout: 60000 }, async t => {
+test('an existing v10 installation updates and then works offline', { timeout: 60000 }, async t => {
   legacy = true;
   t.after(() => { legacy = false; });
   const { context, page, external, errors } = await newPage(t);
   await page.goto(origin + prefix);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v9']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v10']);
   legacy = false;
   await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.getRegistration();
@@ -233,7 +233,7 @@ test('an existing v9 installation updates and then works offline', { timeout: 60
     await registration.update();
     await changed;
   });
-  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v10');
+  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v11');
   await context.setOffline(true);
   await page.reload();
   await play(page);
