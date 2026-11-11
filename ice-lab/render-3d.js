@@ -1,5 +1,5 @@
 import { BOARD_PADDING } from './board-layout.js';
-import { drawIceFrame } from './ice.js';
+import { ICE_VERTEX_SHADER, ICE_FRAGMENT_SHADER, iceNeighbors, iceCrackVariant } from './ice.js';
 import * as THREE from '../vendor/three-0.160.0/build/three.module.js';
 import { EffectComposer } from '../vendor/three-0.160.0/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '../vendor/three-0.160.0/examples/jsm/postprocessing/RenderPass.js';
@@ -53,11 +53,12 @@ export function create3DRenderer(cv, { G, SHAPES, extreme = false }) {
     const selTex = canvasTex(c => { c.strokeStyle = '#fff'; c.lineWidth = 9; c.fillStyle = 'rgba(255,255,255,.18)'; c.beginPath(); c.roundRect ? c.roundRect(8, 8, 112, 112, 22) : c.rect(8, 8, 112, 112); c.fill(); c.stroke(); });
     const additive = (color, map) => new THREE.MeshBasicMaterial({ color, map: map || null, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
     const PLANE = new THREE.PlaneGeometry(1, 1), RINGFX = new THREE.RingGeometry(0.72, 1, 48);
-    const iceMaterials = {}, iceMeshes = new Map();
-    for (const key of ['single', 'thick', 'cracked']) {
-      const map = canvasTex(ctx => drawIceFrame(ctx, 128, key === 'thick' ? 2 : 1, key === 'cracked'));
-      iceMaterials[key] = new THREE.MeshBasicMaterial({ map, transparent: true, depthWrite: false });
-    }
+    const iceMeshes = new Map();
+    const iceMaterial = new THREE.ShaderMaterial({
+      uniforms: { thick: { value: 0 }, cracked: { value: 0 }, variant: { value: 0 }, neighbors: { value: new THREE.Vector4() } },
+      vertexShader: ICE_VERTEX_SHADER, fragmentShader: ICE_FRAGMENT_SHADER,
+      transparent: true, depthWrite: false,
+    });
     const selMesh = new THREE.Mesh(PLANE, additive(0xffffff, selTex)); selMesh.position.z = -0.35; selMesh.visible = false; scene.add(selMesh);
     const flashMesh = new THREE.Mesh(PLANE, additive(0xffffff)); flashMesh.scale.set(12, 12, 1); flashMesh.position.z = 1; flashMesh.visible = false; scene.add(flashMesh);
 
@@ -174,12 +175,16 @@ export function create3DRenderer(cv, { G, SHAPES, extreme = false }) {
       const frozenCells = new Set();
       for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (G.ice[r] && G.ice[r][c]) {
         const key = r * cols + c, layers = G.ice[r][c]; frozenCells.add(key);
-        const material = iceMaterials[layers === 2 ? 'thick' : G.iceInitial[r][c] === 2 ? 'cracked' : 'single'];
         let mesh = iceMeshes.get(key);
-        if (!mesh) { mesh = new THREE.Mesh(PLANE, material); iceMeshes.set(key, mesh); scene.add(mesh); mesh.scale.setScalar(0.98); }
-        mesh.material = material; mesh.position.set(c - midX, midY - r, 0.62);
+        if (!mesh) { mesh = new THREE.Mesh(PLANE, iceMaterial.clone()); iceMeshes.set(key, mesh); scene.add(mesh); }
+        const neighbors = iceNeighbors(G.ice, r, c), uniforms = mesh.material.uniforms;
+        uniforms.variant.value = iceCrackVariant(r, c);
+        uniforms.thick.value = layers === 2 ? 1 : 0;
+        uniforms.cracked.value = layers === 1 && G.iceInitial[r][c] === 2 ? 1 : 0;
+        uniforms.neighbors.value.set(neighbors & 1 ? 1 : 0, neighbors & 2 ? 1 : 0, neighbors & 4 ? 1 : 0, neighbors & 8 ? 1 : 0);
+        mesh.position.set(c - midX, midY - r, layers === 2 ? 0.7 : 0.62);
       }
-      for (const [key, mesh] of iceMeshes) if (!frozenCells.has(key)) { scene.remove(mesh); iceMeshes.delete(key); }
+      for (const [key, mesh] of iceMeshes) if (!frozenCells.has(key)) { scene.remove(mesh); mesh.material.dispose(); iceMeshes.delete(key); }
 
       const fx = new Set();
       for (const b of G.beams) {
@@ -285,7 +290,7 @@ export function create3DRenderer(cv, { G, SHAPES, extreme = false }) {
         composer.passes.forEach(pass => pass.dispose()); composer.dispose();
         environmentTarget.dispose();
         const resources = new Set([...GEOS, BAR, CONE, CORE, SPARK, HALO, RAINBOW, PLANE, RINGFX, dotTex, selTex]);
-        for (const material of Object.values(iceMaterials)) { resources.add(material); resources.add(material.map); }
+        resources.add(iceMaterial);
         scene.traverse(obj => {
           if (obj.geometry) resources.add(obj.geometry);
           if (obj.material) {

@@ -84,6 +84,40 @@ test('ice islands and starter powers remain reachable on every board shape', asy
   }
 });
 
+test('frost growth counts quiet moves, resets on damage, and preserves thawed cells, power-ups, and connectivity', async () => {
+  const { createIcePlan, createFrostGrowth, advanceFrost } = await import('../ice-lab/ice.js');
+  const { ice } = createIcePlan(8, 8, 2), grid = ice.map((row, r) => row.map((_, c) => ({ r, c, sp: null })));
+  assert.equal(createFrostGrowth(ice), null);
+  const state = createFrostGrowth(ice, { after: 3, limit: 4 });
+  assert.equal(advanceFrost(ice, grid, state, false), null); assert.equal(state.quiet, 1);
+  assert.equal(advanceFrost(ice, grid, state, true), null); assert.equal(state.quiet, 0);
+  // This formerly frozen cell can never refreeze, even beside a remaining island.
+  const old = ice.flat().findIndex(Boolean), r = old / 8 | 0, c = old % 8;
+  ice[r][c] = 0;
+  grid[r - 1][c].sp = 'bomb';
+  let grown = 0;
+  for (let turn = 0; turn < 30; turn++) {
+    const before = ice.map(row => row.slice()), cell = advanceFrost(ice, grid, state, false, () => 0);
+    if (cell) {
+      grown++; assert.equal(ice[cell.r][cell.c], 1);
+      assert.ok(before[cell.r - 1][cell.c] || before[cell.r + 1][cell.c] || before[cell.r][cell.c - 1] || before[cell.r][cell.c + 1]);
+      assert.equal(grid[cell.r][cell.c].sp, null);
+    }
+  }
+  assert.equal(grown, 4); assert.equal(state.remaining, 0);
+  assert.equal(ice[r][c], 0); assert.equal(ice[r - 1][c], 0);
+  assert.ok(ice[0].every(n => !n) && ice[7].every(n => !n));
+  // Only eligible candidate is a doorway: freezing it would trap the center.
+  const tight = Array.from({ length: 5 }, () => Array(5).fill(0));
+  tight[2][1] = tight[2][3] = tight[3][2] = 1;
+  const pieces = tight.map(row => row.map(() => ({ sp: 'line' }))); pieces[1][2].sp = null;
+  const blocked = createFrostGrowth(tight, { after: 1, limit: 1 });
+  assert.equal(advanceFrost(tight, pieces, blocked, false), null);
+  assert.equal(tight[1][2], 0); assert.equal(blocked.remaining, 1);
+  for (const row of tight) row.fill(0);
+  assert.equal(advanceFrost(tight, pieces, blocked, false), null);
+});
+
 test('the lab precaches its complete import graph without sharing the main cache namespace', async () => {
   const sw = await readFile(path.join(root, 'ice-lab/sw.js'), 'utf8');
   const scope = { self: { addEventListener() {} } };
@@ -108,7 +142,7 @@ test('a new player thaws the first board through ordinary swaps; saves and offli
   await page.goto(origin + '/'); await page.waitForFunction(() => !!window.__mb);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  await page.evaluate(async () => { const old = await caches.open('ice-lab-v1'); await old.put('/ice-lab/index.html', new Response('Old lab')); });
+  await page.evaluate(async () => { const old = await caches.open('ice-lab-v2'); await old.put('/ice-lab/index.html', new Response('Old lab')); });
   await ready(page);
   await page.waitForFunction(() => navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL.endsWith('/ice-lab/sw.js'));
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -135,11 +169,61 @@ test('a new player thaws the first board through ordinary swaps; saves and offli
   assert.ok(await page.evaluate(() => JSON.parse(localStorage.getItem('matchbusters-ice-lab')).stars[0] > 0));
   assert.equal(await page.evaluate(() => localStorage.getItem('matchbusters')), mainSave);
   const caches = await page.evaluate(() => window.caches.keys());
-  assert.ok(caches.includes('match-busters-v12') && caches.includes('ice-lab-v2'));
-  assert.ok(!caches.includes('ice-lab-v1'));
+  assert.ok(caches.includes('match-busters-v12') && caches.includes('ice-lab-v3'));
+  assert.ok(!caches.includes('ice-lab-v2'));
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => !!window.__mb);
   assert.ok(await page.evaluate(() => __mb.save.stars[0] > 0));
   assert.equal(await page.evaluate(() => localStorage.getItem('matchbusters')), mainSave);
+  assert.deepEqual(errors, []);
+});
+
+test('hard-board growth follows real moves, warns before spreading, resets on chips, and restarts cleanly', { timeout: 60000 }, async t => {
+  const { page, errors } = await open(t); await ready(page);
+  await page.evaluate(() => {
+    const mb = __mb, g = mb.G; mb.startLevel(3);
+    g.grid = Array.from({ length: 8 }, (_, r) => Array.from({ length: 8 }, (_, c) => mb.mk((r + c * 2) % 5, r, c)));
+    g.ice = Array.from({ length: 8 }, () => Array(8).fill(0)); g.ice[4][4] = 2; g.ice[6][6] = 1;
+    g.iceInitial = g.ice.map(row => row.slice()); g.frost.ever = g.ice.map(row => row.map(Boolean));
+    g.thawed = 0; g.iceTotal = 2; g.iceVersion++;
+    mb.setPaused(true); mb.update(10);
+  });
+  assert.equal(await page.evaluate(() => __mb.G.frost.quiet), 0);
+  await page.evaluate(() => __mb.setPaused(false));
+  async function move(a, b) {
+    await page.evaluate(async ({ a, b }) => {
+      const driving = setInterval(() => __mb.update(0.1), 1);
+      try { await __mb.trySwap(a, b); } finally { clearInterval(driving); }
+    }, { a, b });
+  }
+  const corner = { r: 0, c: 0 };
+  await move(corner, { r: 0, c: 1 }); // No match: no move spent and no frost tick.
+  assert.equal(await page.evaluate(() => __mb.G.moves), 36);
+  assert.equal(await page.evaluate(() => __mb.G.frost.quiet), 0);
+  async function quietMove() {
+    await page.evaluate(() => { __mb.G.grid[0][0].sp = 'bomb'; });
+    await move(corner, corner);
+  }
+  await quietMove(); await quietMove();
+  assert.equal(await page.evaluate(() => __mb.G.frost.quiet), 2);
+  assert.ok(await page.locator('#iceWarning').evaluate(el => el.classList.contains('urgent')));
+  await page.evaluate(() => {
+    const g = __mb.G;
+    g.grid = Array.from({ length: 8 }, (_, r) => Array.from({ length: 8 }, (_, c) => __mb.mk((r + c * 2) % 5, r, c)));
+    g.grid[3][3].t = g.grid[3][4].t = g.grid[2][5].t = 1; g.grid[3][5].t = 2;
+  });
+  await move({ r: 2, c: 5 }, { r: 3, c: 5 });
+  assert.equal(await page.evaluate(() => __mb.G.frost.quiet), 0);
+  assert.equal(await page.evaluate(() => __mb.G.iceTotal), 2);
+  await quietMove(); await quietMove(); await quietMove();
+  assert.equal(await page.evaluate(() => __mb.G.iceTotal), 3);
+  assert.equal(await page.evaluate(() => __mb.G.frost.remaining), 7);
+  assert.equal(await page.evaluate(() => __mb.G.frost.quiet), 0);
+  assert.equal(await page.evaluate(() => __mb.G.ice.flat().filter(Boolean).length + __mb.G.thawed), 3);
+  await page.evaluate(() => __mb.startLevel(3));
+  assert.deepEqual(await page.evaluate(() => [__mb.G.frost.quiet, __mb.G.frost.remaining, __mb.G.iceTotal]), [0, 8, 16]);
+  await page.evaluate(() => __mb.startLevel(0));
+  assert.equal(await page.evaluate(() => __mb.G.frost), null);
+  assert.equal(await page.locator('#iceWarning').isVisible(), false);
   assert.deepEqual(errors, []);
 });
 

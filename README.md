@@ -19,7 +19,9 @@ Frozen pieces stay anchored and cannot swap, but their colors still count in mat
 | Color bomb + line | Pieces of the partner's color become line clears |
 | Color bomb + color bomb | Clear unfrozen pieces and chip all ice, triggering power-ups |
 
-First Thaw has no starter power-ups and teaches thawing through ordinary matches. Crossfire teaches combinations, Deep Freeze introduces thick ice, and Prism Storm provides an optional color-bomb chain. Starter pairs are bonuses; every ice island can be chipped by regular play. This spike focuses on these mechanics; spreading ice and seeker pieces are future experiments.
+First Thaw has no starter power-ups and teaches thawing through ordinary matches. Crossfire teaches combinations, Deep Freeze introduces thick ice, and Prism Storm provides an optional color-bomb chain. Starter pairs are bonuses; every ice island can be chipped by regular play. Deep Freeze adds one neighboring frozen cell after four moves without ice damage (up to four spreads); Prism Storm does so after three (up to eight). Any chip resets the visible countdown. Thinking time, pauses, invalid swaps, and completed boards never trigger growth. Thawed cells and earned power-ups stay protected, and growth keeps the unfrozen play area connected. Seeker pieces remain a future experiment.
+
+Fancy and Extreme render ice with a lightweight bevel shader: connected cells form glossy translucent chunks, with larger raised rims and denser frost for double-frozen ice, then clearer branching cracks after damage. Centers stay clear so piece colors remain readable. Smooth uses cached matching sprites and still stops drawing settled boards. The ice shader needs no scene-copy or transmission pass.
 
 ## How to play
 

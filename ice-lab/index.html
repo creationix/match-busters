@@ -35,6 +35,8 @@
   #hudTop { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
   #hudTop .title { flex: 1; min-width: 0; }
   #lvName { font-weight: 800; font-size: 17px; }
+  #iceWarning { color: #9edbf6; font-size: 12px; line-height: 1.25; min-height: 1.25em; margin-top: 3px; }
+  #iceWarning.urgent { color: var(--accent); }
   #lvGoal { color: var(--muted); font-size: 13px; line-height: 1.25; }
   .iconBtn { width: 42px; height: 42px; border-radius: 12px; border: 0; background: var(--panel2); color: var(--text); font-size: 18px; cursor: pointer; }
   .iconBtn:hover { filter: brightness(1.2); }
@@ -52,6 +54,7 @@
   @media (orientation: landscape) {
     #game { flex-direction: row; align-items: center; justify-content: center; gap: 14px; }
     #hud { width: clamp(168px, 20vw, 240px); flex: none; }
+    #iceWarning { min-height: 2.5em; }
     #stats { grid-template-columns: 1fr; gap: 6px; }
     .stat { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; }
     #boardWrap { flex: 1; width: 0; height: 100%; }
@@ -109,7 +112,7 @@
   <div id="hud">
     <div id="hudTop">
       <button class="iconBtn" id="pauseBtn" title="Pause (Esc)">&#10074;&#10074;</button>
-      <div class="title"><div id="lvName">Level 1</div><div id="lvGoal"></div></div>
+      <div class="title"><div id="lvName">Level 1</div><div id="lvGoal"></div><div id="iceWarning" hidden aria-live="polite"></div></div>
     </div>
     <div id="stats">
       <div class="stat" id="sScoreBox"><div class="lbl">Score</div><div class="val" id="sScore">0</div></div>
@@ -121,7 +124,7 @@
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
 </div>
 
-<div class="screen show" id="scrMenu"><div id="ver">Ice Lab · build 2026-11-11 b</div><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">Ice Lab · build 2026-11-11 c</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Ice Lab</h1>
   <p class="sub">Experimental ice and power-up combinations.</p>
@@ -150,7 +153,7 @@
 
 <div class="screen dim" id="scrPause"><div class="card">
   <h2>Paused</h2>
-  <p class="sub">Matches through or beside ice chip a layer.<br>All power-ups thaw ice. Thick ice takes two hits.<br>Swap a special to fire it, or tap it twice.</p>
+  <p class="sub">Matches through or beside ice chip a layer.<br>All power-ups thaw ice. Thick ice takes two hits.<br>Swap a special to fire it, or tap it twice.<br>On hard boards, damaging ice holds back its spread.</p>
   <button class="big" id="resumeBtn">Resume</button>
   <button class="big alt" id="restartBtn">Restart</button>
   <button class="big alt" id="quitBtn">Quit to Menu</button>
@@ -182,7 +185,7 @@ import { createCanvasRenderer } from './render-2d.js';
 import { createFrameRateMonitor } from './frame-rate.js';
 import { createMusicPlayer } from './music.js';
 import { chooseBoardShape, fitBoard } from './board-layout.js';
-import { createIcePlan } from './ice.js';
+import { createIcePlan, createFrostGrowth, advanceFrost } from './ice.js';
 
 window.__mbStarting = true;
 const TAU = Math.PI * 2, PMAX = 2000;
@@ -197,8 +200,8 @@ const SHAPES = [
 const LEVELS = [
   { type: 'thaw', name: 'First Thaw', scenario: 0, iceCount: 6, moves: 22, tip: 'Match through or beside ice to chip it.' },
   { type: 'thaw', name: 'Crossfire', scenario: 1, iceCount: 8, moves: 26, tip: 'Matches and line clears thaw ice. Bomb + line makes a three-wide cross.' },
-  { type: 'thaw', name: 'Deep Freeze', scenario: 2, iceCount: 12, moves: 32, tip: 'Thick ice takes two hits. Match nearby, or combine two bombs.' },
-  { type: 'thaw', name: 'Prism Storm', scenario: 3, iceCount: 16, moves: 36, tip: 'Keep matching to thaw ice. Color bomb + bomb ignites that color.' },
+  { type: 'thaw', name: 'Deep Freeze', scenario: 2, growth: { after: 4, limit: 4 }, iceCount: 12, moves: 32, tip: 'Thick ice takes two hits. Match nearby, or combine two bombs.' },
+  { type: 'thaw', name: 'Prism Storm', scenario: 3, growth: { after: 3, limit: 8 }, iceCount: 16, moves: 36, tip: 'Keep matching to thaw ice. Color bomb + bomb ignites that color.' },
 ];
 const $ = id => document.getElementById(id);
 const fmt = n => n.toLocaleString('en-US');
@@ -325,7 +328,7 @@ function iconCanvas(t, px) {
 // ---------- game state ----------
 let cv = $('board');
 let cellSize = 400 / 8;
-const G = { active: false, paused: false, busy: false, ended: false, timeUp: false, gen: 0, grid: null, ice: [], iceInitial: [], iceVersion: 0, thawed: 0, iceTotal: 0, rows: 8, cols: 8, level: 0, lv: null,
+const G = { active: false, paused: false, busy: false, ended: false, timeUp: false, gen: 0, grid: null, frost: null, ice: [], iceInitial: [], iceVersion: 0, thawed: 0, iceTotal: 0, rows: 8, cols: 8, level: 0, lv: null,
   score: 0, moves: 0, timeLeft: 0, collected: [0, 0, 0, 0, 0], sel: null, drag: null, hint: null, idle: 0,
   dying: [], parts: [], beams: [], blasts: [], timers: [], waiters: [], flash: 0, flashColor: '#ffffff', shake: 0 };
 
@@ -597,7 +600,7 @@ async function trySwap(a, b) {
   if (!canInput() || frozen(a.r, a.c) || frozen(b.r, b.c)) return;
   const same = a.r === b.r && a.c === b.c;
   if ((!same && Math.abs(a.r - b.r) + Math.abs(a.c - b.c) !== 1) || (same && !G.grid[a.r][a.c].sp)) return;
-  const gen = G.gen, first = G.grid[a.r][a.c], second = G.grid[b.r][b.c];
+  const gen = G.gen, iceVersion = G.iceVersion, first = G.grid[a.r][a.c], second = G.grid[b.r][b.c];
   const aKey = a.r * G.cols + a.c, bKey = b.r * G.cols + b.c;
   const combination = same ? null : specialCombo(first, second);
   let trigger = same ? { seeds: [aKey] } : combination ? {
@@ -631,6 +634,15 @@ async function trySwap(a, b) {
     gravity(); await settled(); if (gen !== G.gen) return;
     sfx.land(); await sleep(70); if (gen !== G.gen) return;
   }
+  if (!isOver()) {
+    const growth = advanceFrost(G.ice, G.grid, G.frost, G.iceVersion !== iceVersion);
+    if (growth) {
+      const { r, c } = growth; G.iceInitial[r][c] = 1; G.iceTotal++; G.iceVersion++; G.hint = null; G.idle = 0;
+      G.blasts.push({ r, c, life: 1, size: 1.05, color: '#9ce7ff', dur: 0.55 });
+      toast('Frost spread!'); sfx.forge();
+    }
+  }
+  hud();
   if (!hasMoves() && !isOver()) { toast('Shuffle!'); sfx.shuffle(); shuffleBoard(); await settled(); if (gen !== G.gen) return; }
   G.busy = false; checkEnd();
 }
@@ -676,14 +688,22 @@ function endLevel(win) {
 
 // ---------- HUD / screens ----------
 function goalText(lv) {
-  if (lv.type === 'thaw') return 'Thaw ' + lv.iceCount + ' cells in ' + lv.moves + ' moves. ' + lv.tip;
+  if (lv.type === 'thaw') return 'Thaw all ice in ' + lv.moves + ' moves. ' + lv.tip;
   if (lv.type === 'score') return 'Score ' + fmt(lv.goal) + ' points in ' + lv.moves + ' moves';
   if (lv.type === 'timed') return 'Score ' + fmt(lv.goal) + ' points in ' + lv.time + ' seconds';
   return 'Clear ' + lv.count + ' ' + SHAPES[lv.shape].plural + ' in ' + lv.moves + ' moves';
 }
+function frostWarning(state) {
+  const warning = $('iceWarning'); warning.hidden = !state;
+  if (!state) return;
+  const turns = state.after - state.quiet;
+  warning.textContent = state.remaining ? 'Chip ice in ' + turns + (turns === 1 ? ' move · ' : ' moves · ') + state.remaining + ' spreads left' : 'Frost has stopped spreading';
+  warning.classList.toggle('urgent', !!state.remaining && turns === 1);
+}
 let lastSec = -1;
 function hud(bump) {
   const lv = G.lv; if (!lv) return;
+  frostWarning(G.frost);
   $('sScore').textContent = fmt(G.score);
   if (bump) { const b = $('sScoreBox'); b.classList.remove('bump'); void b.offsetWidth; b.classList.add('bump'); }
   let frac;
@@ -735,10 +755,12 @@ function startLevel(i) {
   setMusicCategory('collect');
   $('floats').innerHTML = '';
   show(null); $('lvGoal').textContent = goalText(lv);
+  frostWarning(lv.growth ? { after: lv.growth.after, quiet: 0, remaining: lv.growth.limit } : null);
   const wrap = $('boardWrap');
   Object.assign(G, chooseBoardShape(save.boardLayout, wrap.clientWidth, wrap.clientHeight));
   const plan = createIcePlan(G.rows, G.cols, lv.scenario);
   G.ice = plan.ice; G.iceInitial = plan.ice.map(row => row.slice()); G.iceTotal = plan.total; G.thawed = 0; G.iceVersion++;
+  G.frost = createFrostGrowth(G.ice, lv.growth);
   do {
     newBoard();
     for (const power of plan.powers) G.grid[power.r][power.c] = mk(power.t, power.r, power.c, power.sp, power.dir);

@@ -1,5 +1,5 @@
 import { BOARD_PADDING } from './board-layout.js';
-import { drawIceFrame } from './ice.js';
+import { drawIceFrame, iceNeighbors, iceCrackVariant } from './ice.js';
 
 // Cached sprites keep the touch-device renderer independent of WebGL and Three.js.
 export function createCanvasRenderer(canvas, { G, SHAPES, drawIcon }) {
@@ -62,11 +62,6 @@ export function createCanvasRenderer(canvas, { G, SHAPES, drawIcon }) {
       return variants;
     });
     iceFrames = {};
-    for (const key of ['single', 'thick', 'cracked']) {
-      const frame = document.createElement('canvas'); frame.width = frame.height = Math.ceil(cell * 0.98);
-      drawIceFrame(frame.getContext('2d'), frame.width, key === 'thick' ? 2 : 1, key === 'cracked');
-      iceFrames[key] = frame;
-    }
     lastGrid = null;
   }
 
@@ -107,7 +102,14 @@ export function createCanvasRenderer(canvas, { G, SHAPES, drawIcon }) {
     ctx.globalAlpha = 1;
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (G.ice[r] && G.ice[r][c]) {
       const layers = G.ice[r][c], cracked = layers === 1 && G.iceInitial[r][c] === 2;
-      const frame = iceFrames[layers === 2 ? 'thick' : cracked ? 'cracked' : 'single'], point = at(c, r);
+      const neighbors = iceNeighbors(G.ice, r, c), variant = cracked ? iceCrackVariant(r, c) : 0;
+      const key = `${layers}:${cracked}:${neighbors}:${variant}`;
+      let frame = iceFrames[key];
+      if (!frame) {
+        frame = document.createElement('canvas'); frame.width = frame.height = Math.ceil(cell);
+        drawIceFrame(frame.getContext('2d'), frame.width, layers, cracked, neighbors, variant); iceFrames[key] = frame;
+      }
+      const point = at(c, r);
       ctx.drawImage(frame, point.x - frame.width / 2, point.y - frame.height / 2);
     }
     if (G.sel) {
