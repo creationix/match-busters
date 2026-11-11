@@ -1,5 +1,5 @@
 import { BOARD_PADDING } from './board-layout.js';
-import { drawIceFrame, iceNeighbors, iceCrackVariant } from './ice.js';
+import { getIceSurface, getIceSprite } from './ice.js';
 
 // Cached sprites keep the touch-device renderer independent of WebGL and Three.js.
 export function createCanvasRenderer(canvas, { G, SHAPES, drawIcon }) {
@@ -8,7 +8,7 @@ export function createCanvasRenderer(canvas, { G, SHAPES, drawIcon }) {
   let width = 0, height = 0, rows = 0, cols = 0, cell = 0, insetX = 0, insetY = 0, frames = 0, sprites = [];
   let lastGrid = null, lastSelection = null, lastHint = null, hadEffects = false;
   const previous = [];
-  let iceFrames = {}, lastIceVersion = -1;
+  let lastIceVersion = -1;
   const at = (col, row) => ({ x: insetX + (col + 0.5) * cell, y: insetY + (row + 0.5) * cell });
   const sameCell = (a, b) => a && a.r === b.r && a.c === b.c;
 
@@ -61,7 +61,6 @@ export function createCanvasRenderer(canvas, { G, SHAPES, drawIcon }) {
       }
       return variants;
     });
-    iceFrames = {};
     lastGrid = null;
   }
 
@@ -100,17 +99,9 @@ export function createCanvasRenderer(canvas, { G, SHAPES, drawIcon }) {
     }
     for (const d of G.dying) piece(d.p, 0.5 + d.life * 0.7, Math.max(0, d.life));
     ctx.globalAlpha = 1;
-    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (G.ice[r] && G.ice[r][c]) {
-      const layers = G.ice[r][c], cracked = layers === 1 && G.iceInitial[r][c] === 2;
-      const neighbors = iceNeighbors(G.ice, r, c), variant = cracked ? iceCrackVariant(r, c) : 0;
-      const key = `${layers}:${cracked}:${neighbors}:${variant}`;
-      let frame = iceFrames[key];
-      if (!frame) {
-        frame = document.createElement('canvas'); frame.width = frame.height = Math.ceil(cell);
-        drawIceFrame(frame.getContext('2d'), frame.width, layers, cracked, neighbors, variant); iceFrames[key] = frame;
-      }
-      const point = at(c, r);
-      ctx.drawImage(frame, point.x - frame.width / 2, point.y - frame.height / 2);
+    if (G.ice && G.ice.length) {
+      const surface = getIceSurface(G);
+      if (surface.visible) ctx.drawImage(getIceSprite(surface,G.iceInitial),insetX,insetY,cols*cell,rows*cell);
     }
     if (G.sel) {
       const point = at(G.sel.c, G.sel.r);
@@ -147,6 +138,6 @@ export function createCanvasRenderer(canvas, { G, SHAPES, drawIcon }) {
       const r = Math.floor(((e.clientY - box.top) * height / box.height - insetY) / cell);
       return r >= 0 && c >= 0 && r < rows && c < cols ? { r, c } : null;
     },
-    dispose() { sprites = []; iceFrames = {}; previous.length = 0; background.width = background.height = 0; },
+    dispose() { sprites = []; previous.length = 0; background.width = background.height = 0; },
   };
 }

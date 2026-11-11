@@ -142,7 +142,7 @@ test('a new player thaws the first board through ordinary swaps; saves and offli
   await page.goto(origin + '/'); await page.waitForFunction(() => !!window.__mb);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  await page.evaluate(async () => { const old = await caches.open('ice-lab-v2'); await old.put('/ice-lab/index.html', new Response('Old lab')); });
+  await page.evaluate(async () => { const old = await caches.open('ice-lab-v3'); await old.put('/ice-lab/index.html', new Response('Old lab')); });
   await ready(page);
   await page.waitForFunction(() => navigator.serviceWorker.controller && navigator.serviceWorker.controller.scriptURL.endsWith('/ice-lab/sw.js'));
   await page.getByRole('button', { name: 'Play', exact: true }).click();
@@ -169,8 +169,8 @@ test('a new player thaws the first board through ordinary swaps; saves and offli
   assert.ok(await page.evaluate(() => JSON.parse(localStorage.getItem('matchbusters-ice-lab')).stars[0] > 0));
   assert.equal(await page.evaluate(() => localStorage.getItem('matchbusters')), mainSave);
   const caches = await page.evaluate(() => window.caches.keys());
-  assert.ok(caches.includes('match-busters-v12') && caches.includes('ice-lab-v3'));
-  assert.ok(!caches.includes('ice-lab-v2'));
+  assert.ok(caches.includes('match-busters-v12') && caches.includes('ice-lab-v4'));
+  assert.ok(!caches.includes('ice-lab-v3'));
   await context.setOffline(true); await page.reload(); await page.waitForFunction(() => !!window.__mb);
   assert.ok(await page.evaluate(() => __mb.save.stars[0] > 0));
   assert.equal(await page.evaluate(() => localStorage.getItem('matchbusters')), mainSave);
@@ -387,6 +387,54 @@ test('gravity and shuffling preserve anchors and never move existing pieces acro
   });
   assert.deepEqual(result, { segmented: true, anchorKept: true, layers: 1, cells: 64, moves: true });
   assert.deepEqual(errors, []);
+});
+
+test('continuous frost contours preserve L/T shapes, holes, diagonal separation, and smoothly blended thickness', async t => {
+  const { page, errors } = await open(t); await ready(page);
+  const result = await page.evaluate(async () => {
+    const { getIceSurface } = await import('/ice-lab/ice.js'), g = __mb.G;
+    __mb.startLevel(0); __mb.setPaused(true);
+    const set = cells => {
+      g.ice = Array.from({ length: 8 }, () => Array(8).fill(0));
+      for (const [r,c,layer=1] of cells) g.ice[r][c] = layer;
+      g.iceInitial = g.ice.map(row => row.slice()); g.iceVersion++;
+      return getIceSurface(g);
+    };
+    const at = (s,r,c,array='distance') => s[array][Math.floor(r*s.unit)*s.width+Math.floor(c*s.unit)];
+    const rotations = [];
+    for (let missing = 0; missing < 4; missing++) {
+      const cells = [[2,2],[2,3],[3,2],[3,3]].filter((_,i) => i !== missing), s = set(cells);
+      const empty = [[2,2],[2,3],[3,2],[3,3]][missing];
+      const seams = [];
+      for (const [r,c] of cells) for (const [dr,dc] of [[0,1],[1,0]]) {
+        if (cells.some(([y,x]) => y === r+dr && x === c+dc)) seams.push(at(s,r+0.5+dr/2,c+0.5+dc/2));
+      }
+      rotations.push({ loops:s.loops.length, centers:cells.map(([r,c]) => at(s,r+0.5,c+0.5)), empty:at(s,empty[0]+0.5,empty[1]+0.5), seams });
+    }
+    const tee = set([[2,2],[2,3],[2,4],[3,3],[4,3]]);
+    const tShape = tee.loops.length === 1 && at(tee,3.5,2.5) < 0 && at(tee,3.5,3.5) > 0;
+    const ring = []; for (let r=2;r<=4;r++) for (let c=2;c<=4;c++) if (r!==3||c!==3) ring.push([r,c]);
+    const hole = set(ring), holeKept = hole.loops.length === 2 && at(hole,3.5,3.5) < -0.2;
+    const diagonal = set([[2,2],[3,3]]), separate = diagonal.loops.length === 2 && at(diagonal,3,3) < 0;
+    const mixed = set([[2,2,2],[2,3],[3,2],[3,3]]);
+    const profile = [];
+    for (let x=2.5; x<3.5; x+=1/mixed.unit) profile.push(at(mixed,2.5,x,'density'));
+    const blend = { thick:profile[0], thin:profile[profile.length-1], middle:at(mixed,2.5,3,'density'), maxStep:Math.max(...profile.slice(1).map((v,i) => Math.abs(v-profile[i]))) };
+    const idleCached = getIceSurface(g) === mixed;
+    g.ice[2][2] = 1; g.iceVersion++;
+    const cracked = getIceSurface(g), reusedContour = cracked.distance === mixed.distance;
+    g.ice[2][2] = 0; g.iceVersion++;
+    const thawed = getIceSurface(g), removedCorner = at(thawed,2.5,2.5) < 0 && thawed.distance !== cracked.distance;
+    return { rotations, tShape, holeKept, separate, blend, idleCached, reusedContour, removedCorner };
+  });
+  for (const shape of result.rotations) {
+    assert.equal(shape.loops,1); assert.ok(shape.centers.every(d=>d>0.3)); assert.ok(shape.empty < -0.2); assert.ok(shape.seams.every(d=>d>0.3));
+  }
+  for (const key of ['tShape','holeKept','separate','idleCached','reusedContour','removedCorner']) assert.equal(result[key],true,key);
+  assert.ok(result.blend.thick>0.95 && result.blend.thin<0.05);
+  assert.ok(result.blend.middle>0.4 && result.blend.middle<0.6);
+  assert.ok(result.blend.maxStep<0.06);
+  assert.deepEqual(errors,[]);
 });
 
 test('frozen cells and cracks render in Fancy and Extreme on tall and wide boards', { timeout: 60000 }, async t => {

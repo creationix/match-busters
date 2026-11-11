@@ -1,5 +1,5 @@
 import { BOARD_PADDING } from './board-layout.js';
-import { ICE_VERTEX_SHADER, ICE_FRAGMENT_SHADER, iceNeighbors, iceCrackVariant } from './ice.js';
+import { ICE_VERTEX_SHADER, ICE_FRAGMENT_SHADER, getIceSurface } from './ice.js';
 import * as THREE from '../vendor/three-0.160.0/build/three.module.js';
 import { EffectComposer } from '../vendor/three-0.160.0/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from '../vendor/three-0.160.0/examples/jsm/postprocessing/RenderPass.js';
@@ -53,12 +53,15 @@ export function create3DRenderer(cv, { G, SHAPES, extreme = false }) {
     const selTex = canvasTex(c => { c.strokeStyle = '#fff'; c.lineWidth = 9; c.fillStyle = 'rgba(255,255,255,.18)'; c.beginPath(); c.roundRect ? c.roundRect(8, 8, 112, 112, 22) : c.rect(8, 8, 112, 112); c.fill(); c.stroke(); });
     const additive = (color, map) => new THREE.MeshBasicMaterial({ color, map: map || null, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false });
     const PLANE = new THREE.PlaneGeometry(1, 1), RINGFX = new THREE.RingGeometry(0.72, 1, 48);
-    const iceMeshes = new Map();
+    const iceField = new THREE.DataTexture(new Uint8Array(4),1,1,THREE.RGBAFormat);
+    iceField.minFilter = iceField.magFilter = THREE.LinearFilter; iceField.generateMipmaps = false;
+    let lastIceSurface = null;
     const iceMaterial = new THREE.ShaderMaterial({
-      uniforms: { thick: { value: 0 }, cracked: { value: 0 }, variant: { value: 0 }, neighbors: { value: new THREE.Vector4() } },
+      uniforms: { field: { value: iceField }, fieldTexel: { value: new THREE.Vector2(1,1) }, boardSize: { value: new THREE.Vector2(8,8) }, resolution: { value: 40 } },
       vertexShader: ICE_VERTEX_SHADER, fragmentShader: ICE_FRAGMENT_SHADER,
-      transparent: true, depthWrite: false,
+      transparent: true, depthWrite: false, depthTest: false,
     });
+    const iceMesh = new THREE.Mesh(PLANE,iceMaterial); iceMesh.position.z = 0; iceMesh.visible = false; scene.add(iceMesh);
     const selMesh = new THREE.Mesh(PLANE, additive(0xffffff, selTex)); selMesh.position.z = -0.35; selMesh.visible = false; scene.add(selMesh);
     const flashMesh = new THREE.Mesh(PLANE, additive(0xffffff)); flashMesh.scale.set(12, 12, 1); flashMesh.position.z = 1; flashMesh.visible = false; scene.add(flashMesh);
 
@@ -172,19 +175,15 @@ export function create3DRenderer(cv, { G, SHAPES, extreme = false }) {
       }
       for (const m of liveMeshes) if (!seen.has(m)) { pieceGroup.remove(m); m.userData.mat.dispose(); }
       liveMeshes = seen;
-      const frozenCells = new Set();
-      for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (G.ice[r] && G.ice[r][c]) {
-        const key = r * cols + c, layers = G.ice[r][c]; frozenCells.add(key);
-        let mesh = iceMeshes.get(key);
-        if (!mesh) { mesh = new THREE.Mesh(PLANE, iceMaterial.clone()); iceMeshes.set(key, mesh); scene.add(mesh); }
-        const neighbors = iceNeighbors(G.ice, r, c), uniforms = mesh.material.uniforms;
-        uniforms.variant.value = iceCrackVariant(r, c);
-        uniforms.thick.value = layers === 2 ? 1 : 0;
-        uniforms.cracked.value = layers === 1 && G.iceInitial[r][c] === 2 ? 1 : 0;
-        uniforms.neighbors.value.set(neighbors & 1 ? 1 : 0, neighbors & 2 ? 1 : 0, neighbors & 4 ? 1 : 0, neighbors & 8 ? 1 : 0);
-        mesh.position.set(c - midX, midY - r, layers === 2 ? 0.7 : 0.62);
-      }
-      for (const [key, mesh] of iceMeshes) if (!frozenCells.has(key)) { scene.remove(mesh); mesh.material.dispose(); iceMeshes.delete(key); }
+      if (G.ice && G.ice.length) {
+        const surface = getIceSurface(G); iceMesh.visible = surface.visible;
+        if (surface !== lastIceSurface) {
+          lastIceSurface = surface; iceField.image = { data: surface.data, width: surface.width, height: surface.height }; iceField.needsUpdate = true;
+          iceMaterial.uniforms.fieldTexel.value.set(1/surface.width,1/surface.height);
+          iceMaterial.uniforms.boardSize.value.set(cols,rows); iceMaterial.uniforms.resolution.value = surface.unit;
+          iceMesh.scale.set(cols,rows,1);
+        }
+      } else iceMesh.visible = false;
 
       const fx = new Set();
       for (const b of G.beams) {
@@ -290,7 +289,7 @@ export function create3DRenderer(cv, { G, SHAPES, extreme = false }) {
         composer.passes.forEach(pass => pass.dispose()); composer.dispose();
         environmentTarget.dispose();
         const resources = new Set([...GEOS, BAR, CONE, CORE, SPARK, HALO, RAINBOW, PLANE, RINGFX, dotTex, selTex]);
-        resources.add(iceMaterial);
+        resources.add(iceMaterial); resources.add(iceField);
         scene.traverse(obj => {
           if (obj.geometry) resources.add(obj.geometry);
           if (obj.material) {

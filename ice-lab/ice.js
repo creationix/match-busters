@@ -69,63 +69,165 @@ export function advanceFrost(ice, grid, state, damaged, random = Math.random) {
   return null;
 }
 
-export function iceNeighbors(ice, r, c) {
-  return (ice[r] && ice[r][c - 1] ? 1 : 0) | (ice[r - 1] && ice[r - 1][c] ? 2 : 0) |
-    (ice[r] && ice[r][c + 1] ? 4 : 0) | (ice[r + 1] && ice[r + 1][c] ? 8 : 0);
+// Trace the exposed edges of the entire frozen region, including concave
+// corners and holes. Right turns keep diagonally touching islands separate.
+function iceContours(ice) {
+  const edges = [], starts = new Map(), rows = ice.length, cols = ice[0].length;
+  const add = (x, y, dx, dy, dir) => {
+    const edge = { x, y, dx, dy, dir, used: false }, key = x + ',' + y;
+    edges.push(edge); if (!starts.has(key)) starts.set(key, []); starts.get(key).push(edge);
+  };
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (ice[r][c]) {
+    if (!r || !ice[r - 1][c]) add(c,r,1,0,0);
+    if (c === cols - 1 || !ice[r][c + 1]) add(c+1,r,0,1,1);
+    if (r === rows - 1 || !ice[r + 1][c]) add(c+1,r+1,-1,0,2);
+    if (!c || !ice[r][c - 1]) add(c,r+1,0,-1,3);
+  }
+  const loops = [], rank = [1,0,3,2];
+  for (const first of edges) if (!first.used) {
+    let edge = first; const points = [];
+    while (edge && !edge.used) {
+      edge.used = true; points.push([edge.x,edge.y]);
+      const x = edge.x + edge.dx, y = edge.y + edge.dy;
+      if (x === first.x && y === first.y) break;
+      const incoming = edge.dir;
+      edge = (starts.get(x + ',' + y) || []).filter(e => !e.used)
+        .sort((a,b) => rank[(a.dir-incoming+4)%4] - rank[(b.dir-incoming+4)%4])[0];
+    }
+    loops.push(points.filter((p,i) => {
+      const a = points[(i+points.length-1)%points.length], b = points[(i+1)%points.length];
+      return (p[0]-a[0])*(b[1]-p[1]) !== (p[1]-a[1])*(b[0]-p[0]);
+    }));
+  }
+  return loops;
 }
 
-export const iceCrackVariant = (r, c) => (r + c * 3) % 4;
+function icePath(ctx, loops, unit) {
+  ctx.beginPath();
+  for (const points of loops) {
+    points.forEach((p,i) => {
+      const a = points[(i+points.length-1)%points.length], b = points[(i+1)%points.length];
+      const la = Math.hypot(a[0]-p[0],a[1]-p[1]), lb = Math.hypot(b[0]-p[0],b[1]-p[1]);
+      const radius = Math.min(0.13,la/2,lb/2), enter = [p[0]+(a[0]-p[0])*radius/la,p[1]+(a[1]-p[1])*radius/la];
+      ctx[i ? 'lineTo' : 'moveTo'](enter[0]*unit,enter[1]*unit);
+      ctx.quadraticCurveTo(p[0]*unit,p[1]*unit,(p[0]+(b[0]-p[0])*radius/lb)*unit,(p[1]+(b[1]-p[1])*radius/lb)*unit);
+    });
+    ctx.closePath();
+  }
+}
 
-// Shared art direction: a clear window surrounded by a rounded, beveled ice shell.
-// Smooth bakes this once per tile size; 3D shades the same silhouette per pixel.
-export function drawIceFrame(ctx, size, layers, cracked = false, neighbors = 0, variant = 0) {
-  ctx.clearRect(0, 0, size, size);
-  ctx.save(); ctx.scale(size, size);
-  const thick = layers === 2, bevel = thick ? 0.15 : 0.085, inset = thick ? 0.01 : 0.045;
-  const roundBox = (inset, radius) => {
-    const left = neighbors & 1 ? -0.2 : inset, top = neighbors & 2 ? -0.2 : inset;
-    const right = neighbors & 4 ? 1.2 : 1 - inset, bottom = neighbors & 8 ? 1.2 : 1 - inset;
-    ctx.beginPath(); ctx.moveTo(left + radius, top); ctx.lineTo(right - radius, top);
-    ctx.quadraticCurveTo(right, top, right, top + radius); ctx.lineTo(right, bottom - radius);
-    ctx.quadraticCurveTo(right, bottom, right - radius, bottom); ctx.lineTo(left + radius, bottom);
-    ctx.quadraticCurveTo(left, bottom, left, bottom - radius); ctx.lineTo(left, top + radius);
-    ctx.quadraticCurveTo(left, top, left + radius, top); ctx.closePath();
-  };
-  roundBox(inset, 0.12);
-  ctx.shadowColor = 'rgba(3,12,36,0.7)'; ctx.shadowBlur = size * 0.035; ctx.shadowOffsetY = size * 0.025;
-  ctx.fillStyle = thick ? 'rgba(102,200,236,0.27)' : 'rgba(96,191,229,0.055)'; ctx.fill();
-  ctx.shadowColor = 'transparent'; ctx.shadowOffsetY = 0;
-  // Broad glossy edges, rather than a wire frame or an icon over the piece.
-  const rim = ctx.createLinearGradient(0.1, 0, 0.8, 1);
-  rim.addColorStop(0, 'rgba(217,250,255,0.85)'); rim.addColorStop(0.24, 'rgba(126,219,245,0.52)');
-  rim.addColorStop(0.5, 'rgba(63,151,206,0.3)'); rim.addColorStop(0.8, 'rgba(36,97,157,0.76)');
-  rim.addColorStop(1, 'rgba(114,210,242,0.7)');
-  roundBox(inset + bevel / 2, 0.11); ctx.strokeStyle = rim; ctx.lineWidth = bevel; ctx.stroke();
-  const lip = ctx.createLinearGradient(0, 0, 1, 1);
-  lip.addColorStop(0, 'rgba(234,253,255,0.65)'); lip.addColorStop(0.5, 'rgba(147,226,255,0.08)'); lip.addColorStop(1, 'rgba(157,229,255,0.36)');
-  roundBox(inset + bevel, 0.09); ctx.strokeStyle = lip; ctx.lineWidth = 0.018; ctx.stroke();
-  // Small upper-left reflection; keep the central color window clear.
-  ctx.strokeStyle = 'rgba(243,254,255,0.82)'; ctx.lineWidth = 0.025; ctx.lineCap = 'round';
-  if (!(neighbors & 2)) { ctx.beginPath(); ctx.moveTo(0.17, 0.085); ctx.lineTo(0.37, 0.085); ctx.stroke(); }
-  ctx.strokeStyle = 'rgba(190,241,255,0.4)'; ctx.lineWidth = 0.015;
-  if (!(neighbors & 1)) { ctx.beginPath(); ctx.moveTo(0.085, 0.22); ctx.lineTo(0.085, 0.4); ctx.stroke(); }
-  ctx.fillStyle = thick ? 'rgba(180,237,255,0.10)' : 'rgba(180,237,255,0.06)';
-  ctx.beginPath(); ctx.moveTo(0.1,0.1); ctx.lineTo(0.65,0.1); ctx.lineTo(0.15,0.85); ctx.closePath(); ctx.fill();
-  if (cracked) {
-    ctx.save(); ctx.translate(0.5,0.5); ctx.rotate(variant * Math.PI / 2); ctx.translate(-0.5,-0.5);
-    const fissures = [
-      [[0.08,0.36],[0.34,0.44],[0.27,0.62],[0.52,0.52],[0.61,0.73],[0.89,0.83]],
-      [[0.27,0.62],[0.18,0.83]], [[0.34,0.44],[0.42,0.24],[0.64,0.16]],
-    ];
-    for (const [color, width, offset] of [['rgba(13,62,98,0.82)',0.032,0], ['rgba(216,248,255,0.85)',0.014,-0.009]]) {
-      ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineJoin = 'round';
-      for (const points of fissures) {
-        ctx.beginPath(); points.forEach(([x,y],i) => ctx[i ? 'lineTo' : 'moveTo'](x + offset, y + offset)); ctx.stroke();
+const surfaceCache = new WeakMap(), ICE_RESOLUTION = 40;
+// One continuous distance/height field prevents tile boundaries from becoming
+// clipping planes. It is rebuilt only when ice changes, never on idle frames.
+export function getIceSurface(G) {
+  const previous = surfaceCache.get(G), ice = G.ice, rows = ice.length, cols = ice[0].length;
+  if (previous && previous.ice === ice && previous.version === G.iceVersion) return previous;
+  const unit = ICE_RESOLUTION, width = cols*unit, height = rows*unit, count = width*height;
+  const coverage = ice.map(row => row.map(n => n ? '1' : '0').join('')).join('');
+  let mask, distance, loops;
+  if (previous && previous.coverage === coverage && previous.width === width && previous.height === height) {
+    ({ mask, distance, loops } = previous);
+  } else {
+    loops = iceContours(ice); mask = document.createElement('canvas'); mask.width = width; mask.height = height;
+    const ctx = mask.getContext('2d', { willReadFrequently: true }); icePath(ctx,loops,unit); ctx.fillStyle = '#fff'; ctx.fill('evenodd');
+    const pixels = ctx.getImageData(0,0,width,height).data, inside = new Uint8Array(count), unsigned = new Float32Array(count);
+    for (let i = 0; i < count; i++) inside[i] = pixels[i*4+3] >= 128 ? 1 : 0;
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const i = y*width+x, alpha = pixels[i*4+3]/255;
+      const boundary = (x && inside[i-1] !== inside[i]) || (x+1<width && inside[i+1] !== inside[i]) ||
+        (y && inside[i-width] !== inside[i]) || (y+1<height && inside[i+width] !== inside[i]);
+      unsigned[i] = alpha > 0 && alpha < 1 ? Math.abs(alpha-0.5) : boundary ? 0.5 : 1e6;
+    }
+    const diagonal = Math.SQRT2;
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+      const i = y*width+x; let d = unsigned[i];
+      if (x) d = Math.min(d,unsigned[i-1]+1);
+      if (y) { d = Math.min(d,unsigned[i-width]+1); if (x) d = Math.min(d,unsigned[i-width-1]+diagonal); if (x+1<width) d = Math.min(d,unsigned[i-width+1]+diagonal); }
+      unsigned[i] = d;
+    }
+    for (let y = height-1; y >= 0; y--) for (let x = width-1; x >= 0; x--) {
+      const i = y*width+x; let d = unsigned[i];
+      if (x+1<width) d = Math.min(d,unsigned[i+1]+1);
+      if (y+1<height) { d = Math.min(d,unsigned[i+width]+1); if (x) d = Math.min(d,unsigned[i+width-1]+diagonal); if (x+1<width) d = Math.min(d,unsigned[i+width+1]+diagonal); }
+      unsigned[i] = d;
+    }
+    distance = new Float32Array(count);
+    for (let i = 0; i < count; i++) distance[i] = Math.min(1,unsigned[i]/unit)*(inside[i] ? 1 : -1);
+  }
+  // Blur occupied weight and thick weight together, then normalize. This tapers
+  // thickness across shared edges without fading solid ice beside empty space.
+  const weights = new Float32Array(count), thick = new Float32Array(count);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const i = y*width+x, layer = ice[y/unit|0][x/unit|0];
+    weights[i] = layer ? 1 : 0; thick[i] = layer === 2 ? 1 : 0;
+  }
+  function blur(input) {
+    const radius = Math.round(unit*0.24), span = radius*2+1, temp = new Float32Array(count), out = new Float32Array(count);
+    for (let y = 0; y < height; y++) {
+      const offset = y*width; let sum = 0;
+      for (let x = -radius; x <= radius; x++) sum += input[offset+Math.max(0,Math.min(width-1,x))];
+      for (let x = 0; x < width; x++) {
+        temp[offset+x] = sum/span;
+        sum += input[offset+Math.min(width-1,x+radius+1)] - input[offset+Math.max(0,x-radius)];
       }
+    }
+    for (let x = 0; x < width; x++) {
+      let sum = 0;
+      for (let y = -radius; y <= radius; y++) sum += temp[Math.max(0,Math.min(height-1,y))*width+x];
+      for (let y = 0; y < height; y++) {
+        out[y*width+x] = sum/span;
+        sum += temp[Math.min(height-1,y+radius+1)*width+x] - temp[Math.max(0,y-radius)*width+x];
+      }
+    }
+    return out;
+  }
+  const blurredWeight = blur(weights), blurredThick = blur(thick), data = new Uint8Array(count*4), density = new Float32Array(count);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const i = y*width+x, r = y/unit|0, c = x/unit|0;
+    const encoded = Math.max(0,Math.min(65535,Math.round((distance[i]+0.2)*131070)));
+    density[i] = blurredWeight[i] > 0 ? blurredThick[i]/blurredWeight[i] : 0;
+    data[i*4] = encoded>>8; data[i*4+1] = encoded&255;
+    data[i*4+2] = Math.round(density[i]*255); data[i*4+3] = ice[r][c] === 1 && G.iceInitial[r][c] === 2 ? 255 : 0;
+  }
+  const surface = { ice, version: G.iceVersion, coverage, width, height, rows, cols, unit, mask, loops, distance, density, data, visible: loops.length > 0, sprite: null };
+  surfaceCache.set(G,surface); return surface;
+}
+
+const smoothstep = (a,b,x) => { const t = Math.max(0,Math.min(1,(x-a)/(b-a))); return t*t*(3-2*t); };
+export function getIceSprite(surface, initial) {
+  if (surface.sprite) return surface.sprite;
+  const { width, height, distance, density, unit, ice, rows, cols } = surface;
+  const canvas = document.createElement('canvas'); canvas.width = width; canvas.height = height;
+  const ctx = canvas.getContext('2d'), pixels = ctx.createImageData(width,height);
+  const gamma = n => Math.round(Math.pow(Math.max(0,Math.min(1,n)),1/2.2)*255);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const i = y*width+x, thick = density[i], d = distance[i]-(0.045-0.035*thick);
+    if (d < -0.012) continue;
+    const bevel = 0.085+0.065*thick, edge = 1-smoothstep(0,bevel,d);
+    let nx = (distance[y*width+Math.max(0,x-1)]-distance[y*width+Math.min(width-1,x+1)])*unit/2*edge*0.9;
+    let ny = (distance[Math.min(height-1,y+1)*width+x]-distance[Math.max(0,y-1)*width+x])*unit/2*edge*0.9;
+    let nz = 1-edge*0.65; const length = Math.hypot(nx,ny,nz); nx/=length; ny/=length; nz/=length;
+    const diffuse = Math.max(0,nx*-0.387+ny*0.507+nz*0.77), reflection = Math.pow(Math.max(0,nx*-0.206+ny*0.269+nz*0.941),52);
+    const lip = Math.exp(-Math.pow((d-bevel)/0.009,2)), highlight = Math.min(1,reflection*0.8+lip*0.35);
+    const facet = (1-smoothstep(-0.08,0.08,Math.sin((x/unit+0.65*y/unit)*0.9)))*0.035;
+    const alpha = Math.min(0.85,0.04+thick*0.18+facet*(1+thick)+edge*(0.54+thick*0.08)+reflection*0.32+lip*0.16)*(smoothstep(-0.012,0.012,d));
+    pixels.data[i*4] = gamma((0.015+0.335*diffuse)*(1-highlight)+0.85*highlight);
+    pixels.data[i*4+1] = gamma((0.11+0.67*diffuse)*(1-highlight)+0.97*highlight);
+    pixels.data[i*4+2] = gamma((0.23+0.71*diffuse)*(1-highlight)+highlight);
+    pixels.data[i*4+3] = Math.round(alpha*255);
+  }
+  ctx.putImageData(pixels,0,0); ctx.save(); icePath(ctx,surface.loops,unit); ctx.clip('evenodd');
+  const fissures = [[[0.08,0.36],[0.34,0.44],[0.27,0.62],[0.52,0.52],[0.61,0.73],[0.89,0.83]],[[0.27,0.62],[0.18,0.83]],[[0.34,0.44],[0.42,0.24],[0.64,0.16]]];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (ice[r][c] === 1 && initial[r][c] === 2) {
+    ctx.save(); ctx.translate((c+0.5)*unit,(r+0.5)*unit); ctx.rotate((r+c*3)%4*Math.PI/2); ctx.scale(unit,unit); ctx.translate(-0.5,-0.5);
+    ctx.lineCap = ctx.lineJoin = 'round';
+    for (const [color,lineWidth,offset] of [['rgba(13,62,98,.82)',.032,0],['rgba(216,248,255,.85)',.014,-.009]]) {
+      ctx.strokeStyle = color; ctx.lineWidth = lineWidth;
+      for (const points of fissures) { ctx.beginPath(); points.forEach(([x,y],i) => ctx[i ? 'lineTo' : 'moveTo'](x+offset,y+offset)); ctx.stroke(); }
     }
     ctx.restore();
   }
-  ctx.restore();
+  ctx.restore(); surface.sprite = canvas; return canvas;
 }
 
 export const ICE_VERTEX_SHADER = `
@@ -139,22 +241,18 @@ export const ICE_VERTEX_SHADER = `
   }
 `;
 
-// Analytic bevel normals produce light and reflected highlights without a scene
-// copy, transmission pass, extra textures, or changing the colors under the ice.
+// A cached contour/height texture supplies continuous bevel normals and density.
+// No scene-copy or transmission pass is needed.
 export const ICE_FRAGMENT_SHADER = `
-  uniform float thick;
-  uniform float cracked;
-  uniform float variant;
-  uniform vec4 neighbors; // left, top, right, bottom
+  uniform sampler2D field;
+  uniform vec2 fieldTexel;
+  uniform vec2 boardSize;
+  uniform float resolution;
   varying vec2 vIceUv;
   varying vec3 vIceView;
-  float shell(vec2 p) {
-    float extent = mix(0.455, 0.49, thick);
-    vec2 lo = mix(vec2(-extent), vec2(-0.7), neighbors.xw);
-    vec2 hi = mix(vec2(extent), vec2(0.7), neighbors.zy);
-    vec2 center = (lo + hi) * 0.5;
-    vec2 q = abs(p - center) - ((hi - lo) * 0.5 - 0.115);
-    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - 0.115;
+  float depthAt(vec2 uv) {
+    vec2 encoded = texture2D(field, uv).rg;
+    return dot(encoded, vec2(65280.0,255.0)) / 131070.0 - 0.2;
   }
   float segment(vec2 p, vec2 a, vec2 b) {
     vec2 ab = b - a;
@@ -171,13 +269,18 @@ export const ICE_FRAGMENT_SHADER = `
     return min(d, segment(p, vec2(-0.08,0.26), vec2(0.14,0.34)));
   }
   void main() {
-    vec2 p = vIceUv - 0.5;
-    float d = shell(p);
-    if (d > 0.002) discard;
-    float bevel = mix(0.085, 0.15, thick);
-    float edge = 1.0 - smoothstep(0.0, bevel, -d);
-    vec2 gradient = vec2(shell(p + vec2(0.002,0.0)) - shell(p - vec2(0.002,0.0)),
-                         shell(p + vec2(0.0,0.002)) - shell(p - vec2(0.0,0.002))) / 0.004;
+    vec2 uv = vec2(vIceUv.x,1.0-vIceUv.y);
+    vec4 state = texture2D(field,uv);
+    float thick = state.b;
+    float d = mix(0.045,0.01,thick) - depthAt(uv);
+    if (d > 0.012) discard;
+    vec2 cell = uv * boardSize;
+    vec2 p = vec2(fract(cell.x)-0.5,0.5-fract(cell.y));
+    float variant = mod(floor(cell.y)+floor(cell.x)*3.0,4.0);
+    float bevel = mix(0.085,0.15,thick);
+    float edge = 1.0-smoothstep(0.0,bevel,-d);
+    vec2 gradient = vec2(depthAt(uv-vec2(fieldTexel.x,0.0))-depthAt(uv+vec2(fieldTexel.x,0.0)),
+                         depthAt(uv+vec2(0.0,fieldTexel.y))-depthAt(uv-vec2(0.0,fieldTexel.y))) * resolution * 0.5;
     vec3 normal = normalize(vec3(gradient * edge * 0.9, 1.0 - edge * 0.65));
     vec3 view = normalize(vIceView);
     vec3 light = normalize(vec3(-0.55, 0.72, 1.1));
@@ -187,17 +290,17 @@ export const ICE_FRAGMENT_SHADER = `
     float lip = exp(-pow((-d - bevel) / 0.009, 2.0));
     vec3 color = mix(vec3(0.015,0.11,0.23), vec3(0.35,0.78,0.94), diffuse);
     color = mix(color, vec3(0.85,0.97,1.0), clamp(reflection * 0.8 + lip * 0.35, 0.0, 1.0));
-    float facet = (1.0 - smoothstep(-0.015,0.015,p.x + 0.65 * p.y + 0.1)) * 0.035;
+    float facet = (1.0-smoothstep(-0.08,0.08,sin((cell.x+0.65*cell.y)*0.9)))*0.035;
     float alpha = 0.04 + thick * 0.18 + facet * (1.0 + thick) + edge * (0.54 + thick * 0.08) + reflection * 0.32 + fresnel * 0.12 + lip * 0.16;
-    if (cracked > 0.5) {
+    if (state.a > 0.01) {
       vec2 cp = variant < 0.5 ? p : variant < 1.5 ? vec2(-p.y,p.x) : variant < 2.5 ? -p : vec2(p.y,-p.x);
-      float groove = 1.0 - smoothstep(0.014, 0.027, fissure(cp));
-      float glint = 1.0 - smoothstep(0.005, 0.014, fissure(cp + vec2(0.012,-0.012)));
+      float groove = (1.0-smoothstep(0.014,0.027,fissure(cp)))*state.a;
+      float glint = (1.0-smoothstep(0.005,0.014,fissure(cp+vec2(0.012,-0.012))))*state.a;
       color = mix(color, vec3(0.025,0.13,0.22), groove);
       color = mix(color, vec3(0.66,0.9,0.98), glint);
       alpha = max(alpha, groove * 0.6 + glint * 0.16);
     }
     // Stay below the bloom threshold: highlights belong to the shell, not the whole cell.
-    gl_FragColor = vec4(clamp(color, 0.0, 1.0), min(alpha, 0.85) * (1.0 - smoothstep(-0.002,0.002,d)));
+    gl_FragColor = vec4(clamp(color, 0.0, 1.0), min(alpha, 0.85) * (1.0 - smoothstep(-0.012,0.012,d)));
   }
 `;
