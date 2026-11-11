@@ -132,7 +132,7 @@ test('cold load, a match, and offline reload work under a GitHub Pages subpath',
   await play(page);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForFunction(() => !!navigator.serviceWorker.controller);
-  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v14']);
+  assert.deepEqual(await page.evaluate(() => caches.keys()), ['match-busters-v15']);
   await context.setOffline(true);
   await page.reload();
   await play(page);
@@ -250,7 +250,7 @@ test('an existing v11 installation updates and then works offline', { timeout: 6
     await registration.update();
     await changed;
   });
-  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v14');
+  await page.waitForFunction(async () => (await caches.keys()).join() === 'match-busters-v15');
   await context.setOffline(true);
   await page.reload();
   await play(page);

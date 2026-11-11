@@ -31,11 +31,12 @@
   @media (display-mode: standalone) { body { height: 100vh; } }
   #game { height: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px;
     padding: calc(10px + var(--sat)) calc(10px + var(--sar)) calc(10px + var(--sab)) calc(10px + var(--sal)); }
+  #playLayout { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 100%; height: 100%; min-width: 0; min-height: 0; }
   #hud { width: 100%; max-width: 900px; flex-shrink: 0; min-width: 0; max-height: 100%; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; }
   #hudTop { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
   #objectives { width: 100%; min-width: 0; margin-bottom: 8px; }
   #objectives > div { white-space: normal; overflow-wrap: anywhere; }
-  #hudTop .title { flex: 1; min-width: 0; }
+  #hudTop .title { order: -1; flex: 1; min-width: 0; }
   #lvName { font-weight: 800; font-size: 17px; }
   #iceProgress, #iceWarning { color: #9edbf6; font-size: 12px; line-height: 1.25; min-height: 1.25em; margin-top: 3px; }
   #iceProgress.done { color: #b4f8c2; }
@@ -54,21 +55,37 @@
   #bar { height: 8px; border-radius: 4px; background: var(--panel); margin-top: 8px; overflow: hidden; }
   #barFill { height: 100%; width: 0; background: linear-gradient(90deg, #ffb347, var(--accent)); border-radius: 4px; transition: width .25s; box-shadow: 0 0 12px var(--accent); }
   #boardWrap { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; min-height: 0; min-width: 0; }
-  /* A side HUD leaves the whole screen height for wide boards. */
+  /* Center the sidebar and the fitted board as one group. */
   @media (orientation: landscape) {
-    #game { flex-direction: row; align-items: center; justify-content: center; gap: 14px; }
-    #hud { width: clamp(184px, 23vw, 280px); flex: none; }
-    #iceWarning { min-height: 2.5em; }
-    #stats { grid-template-columns: 1fr; gap: 6px; }
-    .stat { display: flex; align-items: center; justify-content: space-between; padding: 6px 12px; }
-    #boardWrap { flex: 1; width: 0; height: 100%; }
+    #game { flex-direction: row; align-items: center; justify-content: center; }
+    #playLayout { width: max-content; height: auto; max-width: 100%; max-height: 100%; flex-direction: row; align-items: flex-start; gap: 14px; }
+    #hud { width: clamp(192px, 23vw, 280px); flex: none; max-height: var(--play-height, 100%); padding: 14px;
+      background: linear-gradient(145deg, rgba(47,33,87,.96), rgba(28,19,59,.96));
+      border: 1px solid rgba(210,194,255,.13); border-radius: 18px; box-shadow: 0 12px 32px rgba(0,0,0,.24); }
+    #hudTop { padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid rgba(210,194,255,.1); }
+    #lvName { font-size: 20px; }
+    #objectives { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+    #lvGoal { color: var(--text); font-size: 14px; line-height: 1.35; font-weight: 600; }
+    #iceProgress { font-size: 13px; line-height: 1.35; margin-top: 0; }
+    #iceWarning { padding: 8px; border-radius: 9px; background: rgba(118,201,244,.08); font-size: 12px; line-height: 1.35; min-height: calc(2.7em + 16px); margin-top: 0; }
+    #iceWarning:not([hidden]) { display: flex; align-items: center; }
+    #stats { grid-template-columns: 1fr; gap: 8px; }
+    .stat { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 10px; background: rgba(69,48,120,.58); }
+    .stat .val { min-height: 32px; font-size: 24px; }
+    #bar { margin-top: 12px; }
+    #boardWrap { flex: none; width: var(--board-width, 400px); height: var(--board-height, 400px); }
   }
   @media (orientation: landscape) and (max-height: 420px) {
+    #hud { padding: 10px; border-radius: 14px; }
+    #hudTop { padding-bottom: 6px; margin-bottom: 8px; }
+    #lvName { font-size: 17px; }
+    #objectives { gap: 5px; margin-bottom: 8px; }
+    #lvGoal, #iceProgress { font-size: 12px; line-height: 1.25; }
+    #iceWarning { padding: 6px; font-size: 11px; line-height: 1.25; min-height: calc(2.5em + 12px); }
     #stats { gap: 4px; }
-    .stat { padding: 4px 10px; }
+    .stat { padding: 4px 8px; }
     .stat .val { min-height: 26px; font-size: 20px; }
-    #lvGoal { font-size: 12px; }
-    #bar { height: 6px; margin-top: 6px; }
+    #bar { height: 6px; margin-top: 8px; }
   }
   #stage { position: relative; line-height: 0; }
   #board { display: block; border-radius: 16px; box-shadow: 0 10px 40px rgba(0,0,0,.5), 0 0 0 2px rgba(255,255,255,.07), 0 0 60px rgba(120,80,255,.25); cursor: pointer; touch-action: none; }
@@ -120,6 +137,7 @@
 <body>
 
 <div id="game">
+  <div id="playLayout">
   <div id="hud">
     <div id="hudTop">
       <button class="iconBtn" id="pauseBtn" title="Pause (Esc)">&#10074;&#10074;</button>
@@ -134,9 +152,10 @@
     <div id="bar"><div id="barFill"></div></div>
   </div>
   <div id="boardWrap"><div id="stage"><canvas id="board"></canvas><div id="floats"></div><div id="toast"></div></div></div>
+  </div>
 </div>
 
-<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 l</div><div class="card">
+<div class="screen show" id="scrMenu"><div id="ver">build 2026-11-11 m</div><div class="card">
   <canvas id="logo" width="300" height="70"></canvas>
   <h1>Match Busters</h1>
   <p class="sub">Swap. Match three. Bust them all.</p>
@@ -762,8 +781,8 @@ function startLevel(i) {
   $('iceProgress').hidden = !lv.ice;
   $('iceProgress').textContent = lv.ice ? 'Thaw all ice' : '';
   frostWarning(lv.growth ? { after: lv.growth.after, remaining: lv.growth.limit, quiet: 0 } : null);
-  const wrap = $('boardWrap');
-  Object.assign(G, chooseBoardShape(save.boardLayout, wrap.clientWidth, wrap.clientHeight));
+  const area = playArea();
+  Object.assign(G, chooseBoardShape(save.boardLayout, area.width, area.height));
   const plan = lv.ice ? createIcePlan(G.rows,G.cols,lv.ice)
     : { ice: Array.from({ length: G.rows }, () => Array(G.cols).fill(0)), powers: [], total: 0 };
   G.ice = plan.ice; G.iceInitial = plan.ice.map(row => row.slice()); G.iceTotal = plan.total; G.thawed = 0; G.iceVersion++;
@@ -887,9 +906,22 @@ function bindBoardInput() {
 }
 
 // ---------- loop ----------
-function resize() {
+function playArea() {
   const wrap = $('boardWrap');
-  const fitted = fitBoard(G.rows, G.cols, wrap.clientWidth, wrap.clientHeight - 4);
+  if (!matchMedia('(orientation: landscape)').matches) return { width: wrap.clientWidth, height: wrap.clientHeight };
+  const game = $('game'), style = getComputedStyle(game);
+  const width = game.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  const height = game.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+  const gap = parseFloat(getComputedStyle($('playLayout')).columnGap) || 14;
+  return { width: Math.max(1, width - $('hud').getBoundingClientRect().width - gap), height: Math.max(1, height) };
+}
+function resize() {
+  const area = playArea();
+  const fitted = fitBoard(G.rows, G.cols, area.width, area.height - 4);
+  const layout = $('playLayout');
+  layout.style.setProperty('--board-width', fitted.width + 'px');
+  layout.style.setProperty('--board-height', fitted.height + 'px');
+  layout.style.setProperty('--play-height', area.height + 'px');
   cellSize = fitted.cell;
   // Keep the total pixel workload close to the former Retina square board.
   const pr = Math.min(window.devicePixelRatio || 1, save.smooth ? 1 : 2, Math.sqrt(1600000 / (fitted.width * fitted.height)));
